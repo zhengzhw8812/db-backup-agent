@@ -28,7 +28,7 @@ version: '3.8'
 
 services:
   db-backup-agent:
-    image: tony5188/db-backup-agent:latest
+    image: {your-dockerhub-username}/db-backup-agent:latest
     container_name: db-backup-agent
     restart: unless-stopped
     ports:
@@ -69,7 +69,7 @@ docker-compose up -d
 
 ```bash
 # 构建并推送到 Docker Hub (自动支持 amd64 和 arm64)
-./build_and_push.sh tony5188/db-backup-agent:latest
+./build_and_push.sh {your-dockerhub-username}/db-backup-agent:latest
 ```
 
 该脚本会自动：
