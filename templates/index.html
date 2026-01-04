@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库备份管理器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='flatpickr.min.css') }}">
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">数据库备份管理器</h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
+                <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- 主内容区域: 任务列表 -->
+        <div class="tasks-section">
+            <div class="section-header">
+                <h2>备份任务</h2>
+                <button class="btn-primary" onclick="openAddModal()">+ 新增任务</button>
+            </div>
+
+            <div class="task-list">
+                <!-- PostgreSQL 任务列表 -->
+                <div class="task-group">
+                    <div class="task-group-header">
+                        <h3>PostgreSQL 数据库</h3>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <span class="retention-info">
+                                📦 保留 {{ config.retention_days.postgresql if config.retention_days.postgresql else 7 }} 天
+                            </span>
+                            <button class="schedule-btn" onclick="openScheduleModal('postgresql')">
+                                📅 {{ humanized_schedules.postgresql }}
+                            </button>
+                        </div>
+                    </div>
+                    {% if config.postgresql %}
+                        {% for db in config.postgresql %}
+                        <div class="task-card" data-db-type="postgresql" data-db-id="{{ db.id }}">
+                            <div class="task-info">
+                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db }}</div>
+                                <div class="task-details">
+                                    <span class="task-detail-item">用户: {{ db.user }}</span>
+                                </div>
+                            </div>
+                            <div class="task-actions">
+                                <button class="btn-icon btn-edit" onclick="editTask('postgresql', '{{ db.id }}')" title="编辑">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.854 2.854a.5.5 0 00-.708 0L11 4l1.5 1.5L14 3.5a.5.5 0 000-.708l-.146-.146a.5.5 0 00-.708 0zM11 5L4 12v1.5L5.5 14l7-7L11 5z"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-backup" onclick="backupNow('postgresql')" title="立即备份">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h5.793L8.646 4.854a.5.5 0 1 1 .708-.708l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L10.293 7.5H4.5z"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-delete" onclick="deleteTask('postgresql', '{{ db.id }}')" title="删除">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+                                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <p>还没有配置 PostgreSQL 数据库</p>
+                            <button class="btn-secondary" onclick="openAddModal('postgresql')">添加第一个任务</button>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- MySQL 任务列表 -->
+                <div class="task-group">
+                    <div class="task-group-header">
+                        <h3>MySQL 数据库</h3>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <span class="retention-info">
+                                📦 保留 {{ config.retention_days.mysql if config.retention_days.mysql else 7 }} 天
+                            </span>
+                            <button class="schedule-btn" onclick="openScheduleModal('mysql')">
+                                📅 {{ humanized_schedules.mysql }}
+                            </button>
+                        </div>
+                    </div>
+                    {% if config.mysql %}
+                        {% for db in config.mysql %}
+                        <div class="task-card" data-db-type="mysql" data-db-id="{{ db.id }}">
+                            <div class="task-info">
+                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db or '所有数据库' }}</div>
+                                <div class="task-details">
+                                    <span class="task-detail-item">用户: {{ db.user }}</span>
+                                </div>
+                            </div>
+                            <div class="task-actions">
+                                <button class="btn-icon btn-edit" onclick="editTask('mysql', '{{ db.id }}')" title="编辑">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.854 2.854a.5.5 0 00-.708 0L11 4l1.5 1.5L14 3.5a.5.5 0 000-.708l-.146-.146a.5.5 0 00-.708 0zM11 5L4 12v1.5L5.5 14l7-7L11 5z"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-backup" onclick="backupNow('mysql')" title="立即备份">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h5.793L8.646 4.854a.5.5 0 1 1 .708-.708l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L10.293 7.5H4.5z"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-delete" onclick="deleteTask('mysql', '{{ db.id }}')" title="删除">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+                                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <p>还没有配置 MySQL 数据库</p>
+                            <button class="btn-secondary" onclick="openAddModal('mysql')">添加第一个任务</button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧边栏: 备份文件和历史 -->
+        <div class="sidebar">
+            <!-- PostgreSQL 备份文件 -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>PostgreSQL <small style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">{{ backups_by_type.postgresql|length }} 个</small></h3>
+                    <button class="btn-small btn-secondary" onclick="location.reload()">刷新</button>
+                </div>
+                <div class="backup-files-list">
+                    {% for backup in backups_by_type.postgresql %}
+                    <div class="backup-file-item">
+                        <div class="file-info">
+                            <div class="file-name" title="{{ backup.name }}">{{ backup.name }}</div>
+                            <div class="file-meta">过期时间: {{ backup.delete_time }}</div>
+                        </div>
+                        <div class="file-actions">
+                            <a href="{{ url_for('download_backup', filename=backup.name) }}" class="btn-link" title="下载">下载</a>
+                            <button class="btn-link btn-danger" onclick="deleteBackup('{{ backup.name }}')" title="删除">删除</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>没有 PostgreSQL 备份文件</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- MySQL 备份文件 -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>MySQL <small style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">{{ backups_by_type.mysql|length }} 个</small></h3>
+                    <button class="btn-small btn-secondary" onclick="location.reload()">刷新</button>
+                </div>
+                <div class="backup-files-list">
+                    {% for backup in backups_by_type.mysql %}
+                    <div class="backup-file-item">
+                        <div class="file-info">
+                            <div class="file-name" title="{{ backup.name }}">{{ backup.name }}</div>
+                            <div class="file-meta">过期时间: {{ backup.delete_time }}</div>
+                        </div>
+                        <div class="file-actions">
+                            <a href="{{ url_for('download_backup', filename=backup.name) }}" class="btn-link" title="下载">下载</a>
+                            <button class="btn-link btn-danger" onclick="deleteBackup('{{ backup.name }}')" title="删除">删除</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>没有 MySQL 备份文件</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 备份历史 -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>备份历史 <small style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">{{ backup_history|length }} 条</small></h3>
+                </div>
+                <div class="backup-history-list">
+                    {% for item in backup_history %}
+                    <div class="history-item">
+                        <div class="history-time">{{ item.timestamp }}</div>
+                        <div class="history-details">
+                            <span class="history-db">{{ item.db_type }}</span>
+                            <span class="history-trigger">{{ item.trigger }}</span>
+                            <span class="status-badge status-{{ item.status.lower() }}">{{ item.status }}</span>
+                        </div>
+                        <div class="history-message" title="{{ item.message }}">
+                            {{ item.message }}
+                            {% if item.status == '失败' and item.log_file %}
+                                <a href="#" class="log-link" data-filename="{{ item.log_file }}">查看日志</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>还没有备份历史</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增/编辑任务弹窗 -->
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeTaskModal()">&times;</span>
+            <h2 id="modal-title">新增备份任务</h2>
+            <form action="{{ url_for('add_db') }}" method="post" id="task-form">
+                <input type="hidden" name="edit_id" id="edit-id" value="">
+                <div class="form-group">
+                    <label for="db-type">数据库类型</label>
+                    <select name="type" id="db-type" required>
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="mysql">MySQL</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="db-host">主机地址</label>
+                    <input type="text" name="host" id="db-host" placeholder="192.168.1.100" required>
+                </div>
+                <div class="form-group">
+                    <label for="db-port">端口</label>
+                    <input type="number" name="port" id="db-port" placeholder="5432" required>
+                </div>
+                <div class="form-group">
+                    <label for="db-user">用户名</label>
+                    <input type="text" name="user" id="db-user" placeholder="admin" required>
+                </div>
+                <div class="form-group">
+                    <label for="db-password">密码</label>
+                    <input type="password" name="password" id="db-password" placeholder="••••••" required>
+                </div>
+                <div class="form-group" id="db-name-group">
+                    <label for="db-name">数据库名</label>
+                    <input type="text" name="db" id="db-name" placeholder="mydb">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeTaskModal()">取消</button>
+                    <button type="submit" class="btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 计划设置弹窗 -->
+    <div id="schedule-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeScheduleModal()">&times;</span>
+            <h2 id="schedule-modal-title">备份计划设置</h2>
+            <form action="{{ url_for('save_settings') }}" method="post" id="schedule-form">
+                <input type="hidden" name="db_type" id="schedule-db-type" value="">
+
+                <div class="form-group schedule-group" id="schedule-settings-group">
+                    <label for="retention-days">备份保留天数</label>
+                    <input type="number" name="retention_days" id="retention-days" value="7" min="1" max="365">
+
+                    <label for="frequency" style="margin-top: 16px;">备份频率</label>
+                    <select name="frequency" id="frequency" class="frequency-select">
+                        <option value="disabled">从不 (仅手动)</option>
+                        <option value="daily">每天</option>
+                        <option value="weekly">每周</option>
+                        <option value="monthly">每月</option>
+                    </select>
+                    <div class="schedule-details" style="display: none;">
+                        <input type="time" name="time" class="time-input" value="02:00">
+                        <select name="weekday" class="weekday-select">
+                            <option value="1">周一</option>
+                            <option value="2">周二</option>
+                            <option value="3">周三</option>
+                            <option value="4">周四</option>
+                            <option value="5">周五</option>
+                            <option value="6">周六</option>
+                            <option value="0">周日</option>
+                        </select>
+                        <span class="day-of-month-wrapper" style="display: none;">
+                            <input type="number" name="day_of_month" class="day-of-month-input" min="1" max="31" value="1" style="width: 80px;">
+                            <span style="color: var(--text-secondary); font-size: 14px; font-weight: 500; margin-left: 4px;">日</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeScheduleModal()">取消</button>
+                    <button type="submit" class="btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 日志详情弹窗 -->
+    <div id="log-modal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close-button" onclick="closeLogModal()">&times;</span>
+            <h2>日志详情</h2>
+            <pre id="log-content"></pre>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='choices.min.js') }}" onerror="console.error('Failed to load choices.min.js')"></script>
+    <script src="{{ url_for('static', filename='flatpickr.js') }}" onerror="console.error('Failed to load flatpickr.js')"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/zh.js" onerror="console.error('Failed to load flatpickr zh.js')"></script>
+    <script>
+        console.log('Script is loading...');
+
+        // 任务弹窗操作
+        function openAddModal(defaultType) {
+            document.getElementById('modal-title').textContent = '新增备份任务';
+            document.getElementById('edit-id').value = '';
+            document.getElementById('task-form').reset();
+            document.getElementById('db-type').value = defaultType || 'postgresql';
+            document.getElementById('db-type').dispatchEvent(new Event('change'));
+            document.getElementById('task-modal').style.display = 'block';
+        }
+
+        function closeTaskModal() {
+            document.getElementById('task-modal').style.display = 'none';
+        }
+
+        function editTask(dbType, dbId) {
+            console.log('editTask function called with:', dbType, dbId);
+
+            // 从后端获取数据库配置
+            const url = `{{ url_for('get_db', db_type='__TYPE__', db_id='__ID__') }}`
+                .replace('__TYPE__', dbType)
+                .replace('__ID__', dbId);
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('获取数据库配置失败: ' + data.error);
+                        return;
+                    }
+
+                    // 先设置数据库类型
+                    const dbTypeSelect = document.getElementById('db-type');
+                    dbTypeSelect.value = dbType;
+
+                    // 触发 Choices.js 的 change 事件来更新显示
+                    // Choices.js 需要通过特定的方式来更新值
+                    const choicesInstance = dbTypeSelect.choicesInstance;
+                    if (choicesInstance) {
+                        choicesInstance.setChoiceByValue(dbType);
+                    }
+
+                    // 触发自定义的 change 事件来更新端口等字段
+                    dbTypeSelect.dispatchEvent(new Event('change'));
+
+                    // 填充其他字段
+                    document.getElementById('modal-title').textContent = '编辑备份任务';
+                    document.getElementById('edit-id').value = `${dbType}-${dbId}`;
+                    document.getElementById('db-host').value = data.host || '';
+                    document.getElementById('db-port').value = data.port || '';
+                    document.getElementById('db-user').value = data.user || '';
+                    document.getElementById('db-password').value = data.password || '';
+                    document.getElementById('db-name').value = data.db || '';
+
+                    // 显示模态框
+                    document.getElementById('task-modal').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('获取数据库配置出错:', error);
+                    alert('获取数据库配置出错,请查看控制台日志。');
+                });
+        }
+        console.log('editTask function defined:', typeof editTask);
+
+        function deleteTask(dbType, dbId) {
+            console.log('deleteTask called with:', dbType, dbId);
+            if (confirm('确定要删除这个备份任务吗？')) {
+                const url = `{{ url_for('delete_db', db_type='__TYPE__', db_id='__ID__') }}`
+                    .replace('__TYPE__', dbType)
+                    .replace('__ID__', dbId);
+                console.log('Redirecting to:', url);
+                window.location.href = url;
+            }
+        }
+
+        function backupNow(dbType) {
+            const url = `{{ url_for('backup_now', db_type='__DB_TYPE__') }}`.replace('__DB_TYPE__', dbType);
+
+            fetch(url, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`${dbType.charAt(0).toUpperCase() + dbType.slice(1)} 备份任务: ${data.task}`);
+                    } else {
+                        alert('备份启动失败: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('备份请求出错:', error);
+                    alert('备份请求出错，请查看控制台日志。');
+                });
+        }
+
+        function deleteBackup(filename) {
+            if (confirm('确定要删除这个备份文件吗？')) {
+                const url = `{{ url_for('delete_backup', filename='__FILE__') }}`.replace('__FILE__', filename);
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        function openScheduleModal(dbType) {
+            document.getElementById('schedule-db-type').value = dbType;
+            document.getElementById('schedule-modal-title').textContent = `${dbType === 'postgresql' ? 'PostgreSQL' : 'MySQL'} 备份计划设置`;
+
+            const form = document.getElementById('schedule-form');
+            const data = window.schedulesData[dbType];
+
+            // 获取保留天数配置
+            const retentionDays = (typeof window.retentionDaysConfig === 'object' && window.retentionDaysConfig !== null)
+                ? (window.retentionDaysConfig[dbType] || 7)
+                : 7;
+
+            // 设置表单值
+            form.querySelector('#retention-days').value = retentionDays;
+
+            // 获取频率下拉框的 Choices.js 实例
+            const frequencySelect = form.querySelector('#frequency');
+            const choicesInstance = frequencySelect.choicesInstance;
+
+            if (choicesInstance) {
+                // 使用 Choices.js 的方法来设置值
+                choicesInstance.setChoiceByValue(data.frequency || 'disabled');
+            } else {
+                // 如果没有 Choices.js 实例,直接设置值
+                frequencySelect.value = data.frequency || 'disabled';
+            }
+
+            // 触发 change 事件以更新UI显示
+            frequencySelect.dispatchEvent(new Event('change'));
+
+            form.querySelector('.time-input').value = data.time || '02:00';
+            form.querySelector('.weekday-select').value = data.weekday || '0';
+            form.querySelector('.day-of-month-input').value = data.day_of_month || '1';
+
+            document.getElementById('schedule-modal').style.display = 'block';
+
+            // 触发 change 事件更新显示 - 需要延迟确保弹窗已显示
+            setTimeout(() => {
+                form.querySelector('#frequency').dispatchEvent(new Event('change'));
+            }, 50);
+        }
+
+        // 月份天数提示
+        const monthDaysWarnings = {
+            29: '2月仅29天（闰年）',
+            30: '30天的月份：4月、6月、9月、11月',
+            31: '31天的月份：1月、3月、5月、7月、8月、10月、12月'
+        };
+
+        // 为日期选择框添加事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            const dayOfMonthInput = document.querySelector('.day-of-month-input');
+            if (dayOfMonthInput) {
+                dayOfMonthInput.addEventListener('change', function() {
+                    const day = parseInt(this.value);
+                    if (monthDaysWarnings[day]) {
+                        alert(monthDaysWarnings[day]);
+                    }
+                });
+            }
+        });
+
+        function closeScheduleModal() {
+            document.getElementById('schedule-modal').style.display = 'none';
+        }
+
+        // 日志弹窗操作
+        function closeLogModal() {
+            document.getElementById('log-modal').style.display = 'none';
+        }
+
+        // DOM 加载完成后执行初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 定义全局数据 - 使用安全的 JSON 输出
+            try {
+                window.schedulesData = {
+                    postgresql: {{ schedules_ui.postgresql | tojson | safe }},
+                    mysql: {{ schedules_ui.mysql | tojson | safe }}
+                };
+
+                window.retentionDaysConfig = {{ config.retention_days | tojson | safe }};
+
+                console.log('DOM loaded, scripts initialized');
+                console.log('schedulesData:', window.schedulesData);
+                console.log('retentionDaysConfig:', window.retentionDaysConfig);
+            } catch (e) {
+                console.error('Error initializing data:', e);
+                window.schedulesData = { postgresql: {}, mysql: {} };
+                window.retentionDaysConfig = { postgresql: 7, mysql: 7 };
+            }
+
+            // 数据库类型改变处理
+            const dbTypeSelect = document.getElementById('db-type');
+            if (dbTypeSelect) {
+                dbTypeSelect.addEventListener('change', function() {
+                    const dbPortInput = document.getElementById('db-port');
+                    const dbNameGroup = document.getElementById('db-name-group');
+                    const dbNameInput = document.getElementById('db-name');
+                    const dbNameLabel = dbNameGroup.querySelector('label');
+
+                    if (this.value === 'postgresql') {
+                        dbPortInput.value = '5432';
+                        dbNameLabel.textContent = '数据库名 (PostgreSQL):';
+                        dbNameInput.placeholder = '要备份的数据库名称';
+                        dbNameInput.required = true;
+                    } else if (this.value === 'mysql') {
+                        dbPortInput.value = '3306';
+                        dbNameLabel.textContent = '数据库名 (MySQL):';
+                        dbNameInput.placeholder = '留空则备份所有库';
+                        dbNameInput.required = false;
+                    }
+                });
+
+                // 初始化数据库类型选择
+                dbTypeSelect.dispatchEvent(new Event('change'));
+            }
+
+            // Choices.js下拉选择 - 先初始化
+            const selectElements = document.querySelectorAll('.frequency-select');
+            selectElements.forEach(function(element) {
+                const choices = new Choices(element, {
+                    searchEnabled: false,
+                    itemSelectText: '选择',
+                });
+                // 保存 Choices.js 实例引用
+                element.choicesInstance = choices;
+            });
+
+            // 为任务弹窗的数据库类型也初始化 Choices.js
+            const dbTypeChoices = new Choices(document.getElementById('db-type'), {
+                searchEnabled: false,
+                itemSelectText: '选择',
+                shouldSort: false
+            });
+            // 保存 Choices.js 实例引用,方便后续使用
+            document.getElementById('db-type').choicesInstance = dbTypeChoices;
+
+            // 备份计划UI处理 - 定义函数
+            function setupScheduleUI(groupElement) {
+                const frequencySelect = groupElement.querySelector('.frequency-select');
+                const detailsContainer = groupElement.querySelector('.schedule-details');
+                const timeInput = groupElement.querySelector('.time-input');
+                const weekdaySelect = groupElement.querySelector('.weekday-select');
+                const dayOfMonthWrapper = groupElement.querySelector('.day-of-month-wrapper');
+                const dayOfMonthInput = groupElement.querySelector('.day-of-month-input');
+
+                function updateVisibility() {
+                    const frequency = frequencySelect.value;
+
+                    // 获取 Choices.js 容器 - 每次都重新获取，确保找到正确的元素
+                    const weekdayChoices = weekdaySelect.closest('.choices');
+
+                    console.log('updateVisibility called, frequency:', frequency);
+                    console.log('weekdayChoices:', weekdayChoices);
+                    console.log('timeInput:', timeInput);
+                    console.log('dayOfMonthWrapper:', dayOfMonthWrapper);
+
+                    if (frequency === 'disabled') {
+                        detailsContainer.style.display = 'none';
+                    } else if (frequency === 'daily') {
+                        detailsContainer.style.display = 'block';
+                        // 显示时间，隐藏其他
+                        timeInput.style.display = '';
+                        if (weekdayChoices) weekdayChoices.style.display = 'none';
+                        if (dayOfMonthWrapper) dayOfMonthWrapper.style.display = 'none';
+                    } else if (frequency === 'weekly') {
+                        detailsContainer.style.display = 'block';
+                        // 显示时间和星期，隐藏日期
+                        timeInput.style.display = '';
+                        if (weekdayChoices) weekdayChoices.style.display = '';
+                        if (dayOfMonthWrapper) dayOfMonthWrapper.style.display = 'none';
+                    } else if (frequency === 'monthly') {
+                        detailsContainer.style.display = 'block';
+                        // 显示时间和日期，隐藏星期
+                        timeInput.style.display = '';
+                        if (weekdayChoices) weekdayChoices.style.display = 'none';
+                        if (dayOfMonthWrapper) dayOfMonthWrapper.style.display = '';
+                    }
+                }
+
+                frequencySelect.addEventListener('change', updateVisibility);
+                // 初始调用延迟，确保 Choices.js 已经初始化
+                setTimeout(updateVisibility, 100);
+            }
+
+            // 先初始化 Choices.js
+            // 星期下拉单独初始化，禁用排序
+            const weekdaySelects = document.querySelectorAll('.weekday-select');
+            weekdaySelects.forEach(function(element) {
+                new Choices(element, {
+                    searchEnabled: false,
+                    itemSelectText: '选择',
+                    shouldSort: false,
+                    allowHTML: false
+                });
+            });
+
+            // Choices.js 初始化完成后，再设置 UI 处理
+            setTimeout(function() {
+                document.querySelectorAll('.schedule-group').forEach(setupScheduleUI);
+            }, 150);
+
+            // Flatpickr时间选择器 - 后初始化
+            flatpickr.localize(flatpickr.l10ns.zh);
+            flatpickr(".time-input", {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "H:i",
+                time_24hr: true,
+                allowInput: true,
+                clickOpens: true
+            });
+
+            // 日志查看功能
+            document.querySelectorAll('.log-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const filename = this.dataset.filename;
+                    fetch(`/api/log/${filename}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                document.getElementById('log-content').textContent = `加载日志失败: ${data.error}`;
+                            } else {
+                                document.getElementById('log-content').textContent = data.content;
+                            }
+                            document.getElementById('log-modal').style.display = 'block';
+                        })
+                        .catch(error => {
+                            document.getElementById('log-content').textContent = `加载日志时发生网络错误: ${error}`;
+                            document.getElementById('log-modal').style.display = 'block';
+                        });
+                });
+            });
+
+            // 点击弹窗外部关闭
+            window.addEventListener('click', (event) => {
+                const taskModal = document.getElementById('task-modal');
+                const scheduleModal = document.getElementById('schedule-modal');
+                const logModal = document.getElementById('log-modal');
+
+                if (event.target === taskModal) {
+                    taskModal.style.display = 'none';
+                }
+                if (event.target === scheduleModal) {
+                    scheduleModal.style.display = 'none';
+                }
+                if (event.target === logModal) {
+                    logModal.style.display = 'none';
+                }
+            });
+        }); // DOMContentLoaded 结束
+    </script>
+</body>
+</html>

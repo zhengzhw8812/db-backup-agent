@@ -1,0 +1,4 @@
+# 每天凌晨 3:00 执行备份脚本，并加载环境变量
+0 3 * * * . /etc/environment; /usr/local/bin/backup.sh > /proc/1/fd/1 2>/proc/1/fd/2
+
+# 必须保留此空行，否则 cron 任务将无法正常运行
