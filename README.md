@@ -16,6 +16,8 @@
 
 ## 📦 镜像标签
 
+**Docker Hub 地址**: https://hub.docker.com/r/tony5188/db-backup-agent
+
 | 标签 | 说明 | 推荐度 |
 |------|------|--------|
 | `latest` | 同时支持 x86_64 和 ARM64 架构，Docker 自动识别设备架构并拉取对应版本 | ⭐ 推荐 |
@@ -32,7 +34,7 @@ version: '3.8'
 
 services:
   db-backup-agent:
-    image: {your-dockerhub-username}/db-backup-agent:latest
+    image: tony5188/db-backup-agent:latest
     container_name: db-backup-agent
     restart: unless-stopped
     ports:
@@ -46,6 +48,8 @@ services:
 volumes:
   backups:
 ```
+
+> 💡 **提示**: 镜像已发布至 [Docker Hub](https://hub.docker.com/r/tony5188/db-backup-agent)，可直接使用上述配置。
 
 ### 2. 启动服务
 
@@ -130,6 +134,8 @@ A lightweight, easy-to-deploy database backup management tool that provides auto
 
 ## 📦 Image Tags
 
+**Docker Hub**: https://hub.docker.com/r/tony5188/db-backup-agent
+
 | Tag | Description | Recommendation |
 |-----|-------------|----------------|
 | `latest` | Supports both x86_64 and ARM64 architectures, Docker automatically pulls the correct version for your device | ⭐ Recommended |
@@ -146,7 +152,7 @@ version: '3.8'
 
 services:
   db-backup-agent:
-    image: {your-dockerhub-username}/db-backup-agent:latest
+    image: tony5188/db-backup-agent:latest
     container_name: db-backup-agent
     restart: unless-stopped
     ports:
@@ -160,6 +166,8 @@ services:
 volumes:
   backups:
 ```
+
+> 💡 **Tip**: The image is published on [Docker Hub](https://hub.docker.com/r/tony5188/db-backup-agent). You can use the configuration above directly.
 
 ### 2. Start the Service
 
