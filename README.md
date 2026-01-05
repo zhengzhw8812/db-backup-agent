@@ -135,6 +135,10 @@ docker-compose up -d
 
 ![主界面](Images/screenshot.png)
 
+通知界面：
+
+![通知界面](Images/notifications.png)
+
 ## ⚙️ 配置说明
 
 | 配置项 | 说明 | 必填 |
