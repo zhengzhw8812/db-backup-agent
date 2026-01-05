@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>版本更新说明 - 数据库备份管理器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .changelog-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 20px;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .back-button {
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .back-button:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .version-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .version-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .version-number {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .version-date {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .version-section {
+            margin-bottom: 20px;
+        }
+
+        .version-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .change-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .change-item {
+            padding: 8px 0;
+            padding-left: 24px;
+            position: relative;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .change-item::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--primary-color);
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .change-item.feature::before {
+            content: "✨";
+        }
+
+        .change-item.fix::before {
+            content: "🐛";
+        }
+
+        .change-item.improvement::before {
+            content: "⚡";
+        }
+
+        .change-item.breaking::before {
+            content: "⚠️";
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .badge-new {
+            background: var(--success-light);
+            color: var(--success-dark);
+        }
+
+        .badge-improved {
+            background: var(--info-light);
+            color: var(--info-dark);
+        }
+
+        .badge-fixed {
+            background: var(--warning-light);
+            color: var(--warning-dark);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">数据库备份管理器</h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
+                <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="changelog-container">
+        <div class="page-header">
+            <h1>版本更新说明</h1>
+            <a href="{{ url_for('index') }}" class="back-button">← 返回主页</a>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v2.1.0</div>
+                <div class="version-date">2026-01-05</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 新功能</div>
+                <ul class="change-list">
+                    <li class="change-item feature">添加企业微信通知支持，可在备份成功/失败时接收通知</li>
+                    <li class="change-item feature">添加邮件通知支持，支持 SMTP 配置和多个收件人</li>
+                    <li class="change-item feature">通知类型支持配置（成功时通知、失败时通知）</li>
+                    <li class="change-item feature">添加备份历史记录功能，可查看所有备份任务的执行历史</li>
+                    <li class="change-item feature">添加系统日志功能，记录系统运行状态和错误信息</li>
+                    <li class="change-item feature">Web 界面添加版本更新说明页面</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">⚡ 优化改进</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">优化通知消息格式，使用纯文本格式以兼容微信手机端</li>
+                    <li class="change-item improvement">企业微信 Token 缓存机制优化，支持配置变更自动检测</li>
+                    <li class="change-item improvement">Token 失效时自动重试机制，提高通知发送成功率</li>
+                    <li class="change-item improvement">备份脚本优化，支持在后台异步发送通知，不阻塞备份流程</li>
+                    <li class="change-item improvement">数据库配置管理优化，支持动态加载配置</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🐛 问题修复</div>
+                <ul class="change-list">
+                    <li class="change-item fix">修复企业微信通知在手机端显示"暂不支持此消息类型"的问题</li>
+                    <li class="change-item fix">修复配置变更后 Token 缓存未更新导致的通知发送失败问题</li>
+                    <li class="change-item fix">修复模块导入路径问题，提高容器内运行的兼容性</li>
+                    <li class="change-item fix">修复日志文件路径处理问题</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v2.0.0</div>
+                <div class="version-date">2025-12-25</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 重大更新 - 前端页面重构</div>
+                <ul class="change-list">
+                    <li class="change-item feature">全新的现代化 UI 设计，采用渐变色背景和卡片式布局</li>
+                    <li class="change-item feature">响应式设计优化，支持移动端和平板设备访问</li>
+                    <li class="change-item feature">添加备份文件列表页面，支持文件预览、下载和删除</li>
+                    <li class="change-item feature">添加备份计划配置界面，可视化设置定时任务</li>
+                    <li class="change-item feature">添加备份历史记录页面，展示所有备份任务的执行状态</li>
+                    <li class="change-item feature">添加系统日志页面，可查看系统运行日志和错误信息</li>
+                    <li class="change-item feature">优化表单交互体验，使用模态框替代原生弹窗</li>
+                    <li class="change-item feature">添加实时状态更新，无需刷新页面即可看到最新状态</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">⚡ 优化改进</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">优化页面加载速度，减少首屏渲染时间</li>
+                    <li class="change-item improvement">改进用户交互体验，添加加载状态提示和错误提示</li>
+                    <li class="change-item improvement">优化备份文件管理界面，支持批量操作</li>
+                    <li class="change-item improvement">改进颜色主题，提高视觉层次和可读性</li>
+                    <li class="change-item improvement">优化按钮和表单样式，提供更好的视觉反馈</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🐛 问题修复</div>
+                <ul class="change-list">
+                    <li class="change-item fix">修复移动端菜单显示异常的问题</li>
+                    <li class="change-item fix">修复表单验证逻辑错误</li>
+                    <li class="change-item fix">修复页面在某些浏览器下的兼容性问题</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v1.1.0</div>
+                <div class="version-date">2025-12-20</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 新功能</div>
+                <ul class="change-list">
+                    <li class="change-item feature">支持 MySQL 和 PostgreSQL 数据库备份</li>
+                    <li class="change-item feature">支持多种备份计划（每天、每周、每月）</li>
+                    <li class="change-item feature">支持手动立即备份功能</li>
+                    <li class="change-item feature">支持多个数据库配置同时管理</li>
+                    <li class="change-item feature">Web 界面管理，支持数据库配置的增删改查</li>
+                    <li class="change-item feature">自动清理过期备份文件</li>
+                    <li class="change-item feature">备份文件下载和删除功能</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v1.0.0</div>
+                <div class="version-date">2025-12-01</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 初始版本</div>
+                <ul class="change-list">
+                    <li class="change-item feature">基础数据库备份功能</li>
+                    <li class="change-item feature">Docker 容器化部署</li>
+                    <li class="change-item feature">用户认证系统</li>
+                    <li class="change-item feature">基本的备份文件管理</li>
+                </ul>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 32px; color: var(--text-muted); font-size: 14px;">
+            <p>数据库备份管理器 - 让数据备份更简单</p>
+        </div>
+    </div>
+</body>
+</html>

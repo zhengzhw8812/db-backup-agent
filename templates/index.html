@@ -14,6 +14,8 @@
         <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
             <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">数据库备份管理器</h1>
             <div style="display: flex; align-items: center; gap: 16px;">
+                <a href="{{ url_for('changelog') }}" style="background: rgba(255, 255, 255, 0.15); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">📝 更新日志</a>
+                <a href="{{ url_for('notifications') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">🔔 通知设置</a>
                 <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
                 <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
             </div>
@@ -25,7 +27,7 @@
         <div class="tasks-section">
             <div class="section-header">
                 <h2>备份任务</h2>
-                <button class="btn-primary" onclick="openAddModal()">+ 新增任务</button>
+                <button class="btn-primary" onclick="openAddModal()">新增任务</button>
             </div>
 
             <div class="task-list">

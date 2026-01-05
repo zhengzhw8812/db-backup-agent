@@ -61,6 +61,10 @@ RUN sed -i -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' /usr/local/bin/backup.sh && \
 # 复制应用文件
 COPY app.py /app.py
 COPY db_init.py /db_init.py
+COPY config_manager.py /config_manager.py
+COPY backup_logger.py /app/backup_logger.py
+COPY system_logger.py /app/system_logger.py
+COPY notifications.py /app/notifications.py
 COPY requirements.txt /requirements.txt
 COPY templates /templates
 COPY static /static
