@@ -27,6 +27,10 @@ log_system() {
 
 # 从第一个命令行参数读取要备份的数据库类型
 DB_TYPE_TO_BACKUP=$1
+# 从第二个命令行参数读取触发方式（手动/自动）
+TRIGGER_TYPE=${2:-自动}
+# 从第三个命令行参数读取单个数据库ID（可选）
+SINGLE_DB_ID=${3:-}
 
 # --- 日志记录函数 ---
 log_history() {
@@ -107,9 +111,15 @@ send_backup_notification() {
 # --- 备份函数 ---
 backup_postgresql() {
     local trigger_type=$1
+    local specific_db_id=$2  # 可选：只备份指定的数据库
+
     echo "[$(date)] 正在备份 PostgreSQL 数据库..."
 
-    log_system "info" "backup" "开始 PostgreSQL 备份任务" "触发方式: $trigger_type"
+    if [[ -n "$specific_db_id" ]]; then
+        log_system "info" "backup" "开始 PostgreSQL 单个数据库备份任务" "触发方式: $trigger_type, 数据库ID: $specific_db_id"
+    else
+        log_system "info" "backup" "开始 PostgreSQL 备份任务" "触发方式: $trigger_type"
+    fi
 
     pg_dbs=$(python3 "$CONFIG_MANAGER" get_dbs --db_type postgresql 2>/dev/null)
 
@@ -121,31 +131,88 @@ backup_postgresql() {
     fi
 
     for db_info in $pg_dbs; do
-        IFS=';' read -r host port user password dbname < <(echo "$db_info")
+        IFS=';' read -r host port user password dbname conn_id < <(echo "$db_info")
 
-        backup_file="${BACKUP_DIR}/pg_${dbname}_${DATE}.sql.gz"
-
-        echo "[$(date)] > 正在备份 ${dbname} 到 ${backup_file}..."
-        log_system "info" "backup" "开始备份数据库: $dbname" "目标文件: ${backup_file##*/}"
-
-        export PGPASSWORD=$password
-        if pg_dump -h "$host" -p "$port" -U "$user" -d "$dbname" | gzip > "$backup_file"; then
-            log_history "PostgreSQL" "$trigger_type" "成功" "数据库 ${dbname} 已备份到 ${backup_file##*/}" "" "${backup_file##*/}"
-            log_system "info" "backup" "PostgreSQL 数据库备份成功" "数据库: ${dbname}, 文件: ${backup_file##*/}"
-        else
-            log_history "PostgreSQL" "$trigger_type" "失败" "数据库 ${dbname} 备份失败" "" ""
-            log_system "error" "backup" "PostgreSQL 数据库备份失败" "数据库: ${dbname}, 主机: ${host}"
-            rm -f "$backup_file" # 删除失败的备份文件
+        # 如果指定了数据库ID，只备份匹配的数据库
+        if [[ -n "$specific_db_id" && "$conn_id" != "$specific_db_id" ]]; then
+            continue
         fi
-        unset PGPASSWORD
+
+        if [ -z "$dbname" ]; then # 备份所有数据库
+            backup_file="${BACKUP_DIR}/pg_all_${DATE}.sql.gz"
+            echo "[$(date)] > 正在备份所有 PostgreSQL 数据库到 ${backup_file}..."
+            log_system "info" "backup" "开始备份所有 PostgreSQL 数据库" "目标文件: ${backup_file##*/}"
+
+            export PGPASSWORD=$password
+
+            # 逐个备份所有用户数据库（排除系统模板数据库）
+            databases=$(psql -h "$host" -p "$port" -U "$user" -d "postgres" -tAc "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname" 2>/dev/null)
+
+            if [[ -n "$databases" ]]; then
+                # 创建临时文件
+                local temp_file="${BACKUP_DIR}/pg_all_${DATE}.tmp.sql.gz"
+
+                # 逐个转储数据库并合并
+                first=true
+                for db in $databases; do
+                    echo "[$(date)] >> 备份数据库: $db"
+                    if $first; then
+                        # 第一个数据库，直接创建文件
+                        pg_dump -h "$host" -p "$port" -U "$user" -d "$db" 2>/dev/null | gzip > "$temp_file"
+                        first=false
+                    else
+                        # 后续数据库，追加到文件
+                        pg_dump -h "$host" -p "$port" -U "$user" -d "$db" 2>/dev/null | gzip >> "$temp_file"
+                    fi
+                done
+
+                # 重命名为最终文件
+                mv "$temp_file" "$backup_file"
+
+                if [[ -f "$backup_file" && -s "$backup_file" ]]; then
+                    log_history "PostgreSQL" "$trigger_type" "成功" "所有数据库已备份到 ${backup_file##*/}" "" "${backup_file##*/}"
+                    log_system "info" "backup" "PostgreSQL 所有数据库备份成功" "文件: ${backup_file##*/}"
+                else
+                    log_history "PostgreSQL" "$trigger_type" "失败" "所有数据库备份失败" "" ""
+                    log_system "error" "backup" "PostgreSQL 所有数据库备份失败" "主机: ${host}"
+                    rm -f "$backup_file"
+                fi
+            else
+                log_history "PostgreSQL" "$trigger_type" "失败" "无法获取数据库列表" "" ""
+                log_system "error" "backup" "PostgreSQL 无法获取数据库列表" "主机: ${host}"
+            fi
+            unset PGPASSWORD
+        else # 备份单个数据库
+            backup_file="${BACKUP_DIR}/pg_${dbname}_${DATE}.sql.gz"
+
+            echo "[$(date)] > 正在备份 ${dbname} 到 ${backup_file}..."
+            log_system "info" "backup" "开始备份数据库: $dbname" "目标文件: ${backup_file##*/}"
+
+            export PGPASSWORD=$password
+            if pg_dump -h "$host" -p "$port" -U "$user" -d "$dbname" | gzip > "$backup_file"; then
+                log_history "PostgreSQL" "$trigger_type" "成功" "数据库 ${dbname} 已备份到 ${backup_file##*/}" "" "${backup_file##*/}"
+                log_system "info" "backup" "PostgreSQL 数据库备份成功" "数据库: ${dbname}, 文件: ${backup_file##*/}"
+            else
+                log_history "PostgreSQL" "$trigger_type" "失败" "数据库 ${dbname} 备份失败" "" ""
+                log_system "error" "backup" "PostgreSQL 数据库备份失败" "数据库: ${dbname}, 主机: ${host}"
+                rm -f "$backup_file" # 删除失败的备份文件
+            fi
+            unset PGPASSWORD
+        fi
     done
 }
 
 backup_mysql() {
     local trigger_type=$1
+    local specific_db_id=$2  # 可选：只备份指定的数据库
+
     echo "[$(date)] 正在备份 MySQL 数据库..."
 
-    log_system "info" "backup" "开始 MySQL 备份任务" "触发方式: $trigger_type"
+    if [[ -n "$specific_db_id" ]]; then
+        log_system "info" "backup" "开始 MySQL 单个数据库备份任务" "触发方式: $trigger_type, 数据库ID: $specific_db_id"
+    else
+        log_system "info" "backup" "开始 MySQL 备份任务" "触发方式: $trigger_type"
+    fi
 
     mysql_dbs=$(python3 "$CONFIG_MANAGER" get_dbs --db_type mysql 2>/dev/null)
 
@@ -157,7 +224,12 @@ backup_mysql() {
     fi
 
     for db_info in $mysql_dbs; do
-        IFS=';' read -r host port user password dbname < <(echo "$db_info")
+        IFS=';' read -r host port user password dbname conn_id < <(echo "$db_info")
+
+        # 如果指定了数据库ID，只备份匹配的数据库
+        if [[ -n "$specific_db_id" && "$conn_id" != "$specific_db_id" ]]; then
+            continue
+        fi
 
         if [ -z "$dbname" ]; then # 备份所有数据库
             backup_file="${BACKUP_DIR}/mysql_all_${DATE}.sql.gz"
@@ -222,14 +294,16 @@ main() {
     DB_TYPE_TO_BACKUP=$1
     # 第二个参数是触发类型。如果未提供，则默认为"手动"。
     local trigger_type=${2:-"手动"}
+    # 第三个参数是单个数据库ID（可选）
+    local db_id=${3:-}
 
     # 根据传入的参数决定备份哪个数据库
     if [ -z "$DB_TYPE_TO_BACKUP" ] || [ "$DB_TYPE_TO_BACKUP" == "postgresql" ]; then
-        backup_postgresql "$trigger_type"
+        backup_postgresql "$trigger_type" "$db_id"
     fi
 
     if [ -z "$DB_TYPE_TO_BACKUP" ] || [ "$DB_TYPE_TO_BACKUP" == "mysql" ]; then
-        backup_mysql "$trigger_type"
+        backup_mysql "$trigger_type" "$db_id"
     fi
 
     # 如果是自动任务，则执行清理

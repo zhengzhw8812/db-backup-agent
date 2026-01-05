@@ -48,7 +48,7 @@
                         {% for db in config.postgresql %}
                         <div class="task-card" data-db-type="postgresql" data-db-id="{{ db.id }}">
                             <div class="task-info">
-                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db }}</div>
+                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db_name or '所有数据库' }}</div>
                                 <div class="task-details">
                                     <span class="task-detail-item">用户: {{ db.user }}</span>
                                 </div>
@@ -59,7 +59,7 @@
                                         <path d="M12.854 2.854a.5.5 0 00-.708 0L11 4l1.5 1.5L14 3.5a.5.5 0 000-.708l-.146-.146a.5.5 0 00-.708 0zM11 5L4 12v1.5L5.5 14l7-7L11 5z"/>
                                     </svg>
                                 </button>
-                                <button class="btn-icon btn-backup" onclick="backupNow('postgresql')" title="立即备份">
+                                <button class="btn-icon btn-backup" onclick="backupNow('postgresql', '{{ db.id }}')" title="立即备份">
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h5.793L8.646 4.854a.5.5 0 1 1 .708-.708l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L10.293 7.5H4.5z"/>
                                     </svg>
@@ -98,7 +98,7 @@
                         {% for db in config.mysql %}
                         <div class="task-card" data-db-type="mysql" data-db-id="{{ db.id }}">
                             <div class="task-info">
-                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db or '所有数据库' }}</div>
+                                <div class="task-name">{{ db.host }}:{{ db.port }}/{{ db.db_name or '所有数据库' }}</div>
                                 <div class="task-details">
                                     <span class="task-detail-item">用户: {{ db.user }}</span>
                                 </div>
@@ -109,7 +109,7 @@
                                         <path d="M12.854 2.854a.5.5 0 00-.708 0L11 4l1.5 1.5L14 3.5a.5.5 0 000-.708l-.146-.146a.5.5 0 00-.708 0zM11 5L4 12v1.5L5.5 14l7-7L11 5z"/>
                                     </svg>
                                 </button>
-                                <button class="btn-icon btn-backup" onclick="backupNow('mysql')" title="立即备份">
+                                <button class="btn-icon btn-backup" onclick="backupNow('mysql', '{{ db.id }}')" title="立即备份">
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h5.793L8.646 4.854a.5.5 0 1 1 .708-.708l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L10.293 7.5H4.5z"/>
                                     </svg>
@@ -223,7 +223,7 @@
         <div class="modal-content">
             <span class="close-button" onclick="closeTaskModal()">&times;</span>
             <h2 id="modal-title">新增备份任务</h2>
-            <form action="{{ url_for('add_db') }}" method="post" id="task-form">
+            <form action="{{ url_for('add_db') }}" method="post" id="task-form" novalidate>
                 <input type="hidden" name="edit_id" id="edit-id" value="">
                 <div class="form-group">
                     <label for="db-type">数据库类型</label>
@@ -250,10 +250,23 @@
                 </div>
                 <div class="form-group" id="db-name-group">
                     <label for="db-name">数据库名</label>
-                    <input type="text" name="db" id="db-name" placeholder="mydb">
+                    <div style="display: flex; gap: 8px; align-items: flex-start;">
+                        <select name="db" id="db-name" style="flex: 1;">
+                            <option value="">-- 请先连接服务器 --</option>
+                        </select>
+                        <button type="button" class="btn-small btn-secondary" onclick="loadDatabases()" title="刷新数据库列表" id="refresh-db-btn" disabled>
+                            🔄
+                        </button>
+                    </div>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        填写连接信息后点击"测试连接"按钮来获取数据库列表（可选择"所有数据库"备份所有数据库）
+                    </small>
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeTaskModal()">取消</button>
+                    <button type="button" class="btn-secondary" onclick="testConnection()" id="test-connection-btn">
+                        🔗 测试连接
+                    </button>
                     <button type="submit" class="btn-primary">保存</button>
                 </div>
             </form>
@@ -320,6 +333,23 @@
     <script>
         console.log('Script is loading...');
 
+        // 表单提交验证
+        document.getElementById('task-form').addEventListener('submit', function(e) {
+            const host = document.getElementById('db-host').value.trim();
+            const port = document.getElementById('db-port').value.trim();
+            const user = document.getElementById('db-user').value.trim();
+            const password = document.getElementById('db-password').value.trim();
+
+            if (!host || !port || !user || !password) {
+                e.preventDefault();
+                alert('请填写所有必填字段（主机地址、端口、用户名、密码）');
+                return false;
+            }
+
+            // 数据库名可以为空（表示所有数据库）
+            return true;
+        });
+
         // 任务弹窗操作
         function openAddModal(defaultType) {
             document.getElementById('modal-title').textContent = '新增备份任务';
@@ -371,7 +401,26 @@
                     document.getElementById('db-port').value = data.port || '';
                     document.getElementById('db-user').value = data.user || '';
                     document.getElementById('db-password').value = data.password || '';
-                    document.getElementById('db-name').value = data.db || '';
+
+                    // 设置数据库下拉框的值
+                    const dbSelect = document.getElementById('db-name');
+                    const dbName = data.db_name || '';
+                    if (dbName) {
+                        // 创建选项并设置值
+                        const option = document.createElement('option');
+                        option.value = dbName;
+                        option.textContent = dbName;
+                        dbSelect.innerHTML = '';
+                        dbSelect.appendChild(option);
+                        dbSelect.value = dbName;
+                    } else {
+                        // 空值，显示"所有数据库"
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '所有数据库';
+                        dbSelect.innerHTML = '';
+                        dbSelect.appendChild(option);
+                    }
 
                     // 显示模态框
                     document.getElementById('task-modal').style.display = 'block';
@@ -394,14 +443,27 @@
             }
         }
 
-        function backupNow(dbType) {
-            const url = `{{ url_for('backup_now', db_type='__DB_TYPE__') }}`.replace('__DB_TYPE__', dbType);
+        function backupNow(dbType, dbId = null) {
+            let url;
+            if (dbId) {
+                // 备份单个数据库
+                url = `{{ url_for('backup_single', db_type='__DB_TYPE__', db_id='__DB_ID__') }}`
+                    .replace('__DB_TYPE__', dbType)
+                    .replace('__DB_ID__', dbId);
+            } else {
+                // 备份所有数据库
+                url = `{{ url_for('backup_now', db_type='__DB_TYPE__') }}`.replace('__DB_TYPE__', dbType);
+            }
 
             fetch(url, { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert(`${dbType.charAt(0).toUpperCase() + dbType.slice(1)} 备份任务: ${data.task}`);
+                        if (dbId) {
+                            alert(`${dbType.charAt(0).toUpperCase() + dbType.slice(1)} 数据库备份任务: ${data.task}`);
+                        } else {
+                            alert(`${dbType.charAt(0).toUpperCase() + dbType.slice(1)} 备份任务: ${data.task}`);
+                        }
                     } else {
                         alert('备份启动失败: ' + data.message);
                     }
@@ -421,6 +483,144 @@
                 document.body.appendChild(form);
                 form.submit();
             }
+        }
+
+        // 测试数据库连接
+        function testConnection() {
+            const dbType = document.getElementById('db-type').value;
+            const host = document.getElementById('db-host').value.trim();
+            const port = document.getElementById('db-port').value.trim();
+            const user = document.getElementById('db-user').value.trim();
+            const password = document.getElementById('db-password').value.trim();
+
+            // 验证必填字段
+            if (!host || !port || !user || !password) {
+                alert('请先填写主机地址、端口、用户名和密码');
+                return;
+            }
+
+            const btn = document.getElementById('test-connection-btn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '🔄 测试中...';
+
+            fetch('/api/test_connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    db_type: dbType,
+                    host: host,
+                    port: parseInt(port),
+                    user: user,
+                    password: password,
+                    database: ''
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    // 启用刷新数据库列表按钮
+                    document.getElementById('refresh-db-btn').disabled = false;
+
+                    // 自动加载数据库列表
+                    loadDatabases();
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('测试连接出错:', error);
+                alert('❌ 测试连接失败: ' + error.message);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+
+        // 加载数据库列表
+        function loadDatabases() {
+            const dbType = document.getElementById('db-type').value;
+            const host = document.getElementById('db-host').value.trim();
+            const port = document.getElementById('db-port').value.trim();
+            const user = document.getElementById('db-user').value.trim();
+            const password = document.getElementById('db-password').value.trim();
+
+            // 验证必填字段
+            if (!host || !port || !user || !password) {
+                alert('请先填写主机地址、端口、用户名和密码');
+                return;
+            }
+
+            const btn = document.getElementById('refresh-db-btn');
+            const originalHTML = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '🔄 加载中...';
+
+            const dbSelect = document.getElementById('db-name');
+            const currentValue = dbSelect.value;
+
+            fetch('/api/get_databases', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    db_type: dbType,
+                    host: host,
+                    port: parseInt(port),
+                    user: user,
+                    password: password
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 清空现有选项
+                    dbSelect.innerHTML = '';
+
+                    if (data.databases && data.databases.length > 0) {
+                        // 添加数据库选项
+                        data.databases.forEach(dbName => {
+                            const option = document.createElement('option');
+                            option.value = dbName;
+                            // 空字符串显示为"所有数据库"
+                            option.textContent = dbName === '' ? '所有数据库' : dbName;
+                            dbSelect.appendChild(option);
+                        });
+
+                        // 尝试恢复之前选择的值
+                        if (currentValue && data.databases.includes(currentValue)) {
+                            dbSelect.value = currentValue;
+                        } else {
+                            dbSelect.selectedIndex = 0;
+                        }
+
+                        alert(`✅ 成功加载 ${data.databases.length} 个数据库`);
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '-- 没有找到数据库 --';
+                        dbSelect.appendChild(option);
+                        alert('⚠️ 服务器上没有找到可备份的数据库');
+                    }
+                } else {
+                    alert('❌ ' + data.message);
+                    dbSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+                }
+            })
+            .catch(error => {
+                console.error('加载数据库列表出错:', error);
+                alert('❌ 加载数据库列表失败: ' + error.message);
+                dbSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            });
         }
 
         function openScheduleModal(dbType) {

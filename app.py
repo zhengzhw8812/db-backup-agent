@@ -11,6 +11,9 @@ from datetime import datetime, timedelta
 
 import re
 
+# 导入数据库迁移模块
+from migrate_db import ensure_v22_tables
+
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'  # 生产环境请更改此密钥
 
@@ -442,7 +445,7 @@ def get_db(db_type, db_id):
 
 @app.route('/backup_now/<db_type>', methods=['POST'])
 def backup_now(db_type):
-    """触发一次指定数据库的手动备份。"""
+    """触发一次指定数据库类型的手动备份（备份所有数据库）。"""
     config = load_config()
     task_status = '未启动 (未配置)'
 
@@ -462,6 +465,44 @@ def backup_now(db_type):
                 start_new_session=True
             )
             task_status = '已启动'
+
+        return jsonify({'status': 'success', 'task': task_status})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/backup_single/<db_type>/<db_id>', methods=['POST'])
+def backup_single(db_type, db_id):
+    """触发单个数据库的手动备份。"""
+    config = load_config()
+    task_status = '未启动 (未配置)'
+
+    try:
+        if db_type == 'postgresql':
+            # 检查是否配置了该数据库
+            if config.get('postgresql'):
+                db_exists = any(db.get('id') == db_id for db in config['postgresql'])
+                if db_exists:
+                    subprocess.Popen(
+                        f'/usr/local/bin/backup.sh postgresql 手动 {db_id} >/dev/null 2>&1 &',
+                        shell=True,
+                        start_new_session=True
+                    )
+                    task_status = '已启动'
+                else:
+                    task_status = '数据库不存在'
+        elif db_type == 'mysql':
+            if config.get('mysql'):
+                db_exists = any(db.get('id') == db_id for db in config['mysql'])
+                if db_exists:
+                    subprocess.Popen(
+                        f'/usr/local/bin/backup.sh mysql 手动 {db_id} >/dev/null 2>&1 &',
+                        shell=True,
+                        start_new_session=True
+                    )
+                    task_status = '已启动'
+                else:
+                    task_status = '数据库不存在'
 
         return jsonify({'status': 'success', 'task': task_status})
     except Exception as e:
@@ -872,5 +913,168 @@ def api_system_logs():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# --- 数据库连接测试和列表查询 API ---
+
+@app.route('/api/test_connection', methods=['POST'])
+@login_required
+def test_connection():
+    """测试数据库连接"""
+    try:
+        data = request.get_json()
+        db_type = data.get('db_type')
+        host = data.get('host')
+        port = int(data.get('port', 5432 if db_type == 'postgresql' else 3306))
+        user = data.get('user')
+        password = data.get('password')
+        database = data.get('database', '')
+
+        if db_type == 'postgresql':
+            # 测试 PostgreSQL 连接
+            try:
+                import psycopg2
+                conn_params = {
+                    'host': host,
+                    'port': port,
+                    'user': user,
+                    'password': password,
+                    'connect_timeout': 5
+                }
+                # 默认连接到 postgres 数据库
+                if database:
+                    conn_params['dbname'] = database
+                else:
+                    conn_params['dbname'] = 'postgres'
+
+                conn = psycopg2.connect(**conn_params)
+                conn.close()
+                return jsonify({'success': True, 'message': '连接成功'})
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'连接失败: {str(e)}'})
+
+        elif db_type == 'mysql':
+            # 测试 MySQL 连接
+            try:
+                import pymysql
+                conn_params = {
+                    'host': host,
+                    'port': port,
+                    'user': user,
+                    'password': password,
+                    'connect_timeout': 5
+                }
+                if database:
+                    conn_params['database'] = database
+
+                conn = pymysql.connect(**conn_params)
+                conn.close()
+                return jsonify({'success': True, 'message': '连接成功'})
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'连接失败: {str(e)}'})
+
+        return jsonify({'success': False, 'message': '不支持的数据库类型'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'测试连接时出错: {str(e)}'}), 500
+
+
+@app.route('/api/get_databases', methods=['POST'])
+@login_required
+def get_databases():
+    """获取服务器上的数据库列表"""
+    try:
+        data = request.get_json()
+        db_type = data.get('db_type')
+        host = data.get('host')
+        port = int(data.get('port', 5432 if db_type == 'postgresql' else 3306))
+        user = data.get('user')
+        password = data.get('password')
+
+        databases = []
+
+        if db_type == 'postgresql':
+            # 获取 PostgreSQL 数据库列表
+            try:
+                import psycopg2
+                conn = psycopg2.connect(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    dbname='postgres',  # 默认连接到 postgres 数据库
+                    connect_timeout=5
+                )
+                conn.autocommit = True
+                cursor = conn.cursor()
+
+                # 查询所有数据库（排除系统模板数据库，但保留 postgres）
+                cursor.execute("""
+                    SELECT datname
+                    FROM pg_database
+                    WHERE datistemplate = false
+                    ORDER BY datname
+                """)
+
+                databases = [row[0] for row in cursor.fetchall()]
+
+                # 在列表开头添加"所有数据库"选项
+                databases.insert(0, '')
+
+                cursor.close()
+                conn.close()
+
+                return jsonify({'success': True, 'databases': databases})
+
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'获取数据库列表失败: {str(e)}'})
+
+        elif db_type == 'mysql':
+            # 获取 MySQL 数据库列表
+            try:
+                import pymysql
+                conn = pymysql.connect(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    connect_timeout=5
+                )
+                cursor = conn.cursor()
+
+                # 查询所有数据库
+                cursor.execute("SHOW DATABASES")
+
+                # 过滤掉系统数据库
+                system_databases = {'information_schema', 'performance_schema', 'mysql', 'sys'}
+                databases = [row[0] for row in cursor.fetchall() if row[0] not in system_databases]
+                databases.sort()  # 按名称排序
+
+                # 在列表开头添加"所有数据库"选项
+                databases.insert(0, '')
+
+                cursor.close()
+                conn.close()
+
+                return jsonify({'success': True, 'databases': databases})
+
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'获取数据库列表失败: {str(e)}'})
+
+        return jsonify({'success': False, 'message': '不支持的数据库类型'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取数据库列表时出错: {str(e)}'}), 500
+
+
 if __name__ == '__main__':
+    # 启动时自动检查并确保数据库表完整性
+    print("\n" + "=" * 60)
+    print("应用启动 - 检查数据库完整性")
+    print("=" * 60)
+    try:
+        ensure_v22_tables()
+    except Exception as e:
+        print(f"⚠️  数据库完整性检查失败: {str(e)}")
+        print("继续启动应用...")
+    print("=" * 60 + "\n")
+
     app.run(host='0.0.0.0', port=5001, debug=True)
