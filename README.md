@@ -176,6 +176,26 @@ docker-compose up -d
 
 ## 📋 更新日志
 
+### v2.2.0 (2026-01-05)
+
+#### ✨ 新功能
+- **数据库自动迁移** - 新增数据库版本自动检测和迁移功能
+- **完整性检查** - 应用启动时自动检查并修复数据库表和索引
+- **表结构验证** - 自动检测表结构是否完整，缺失或不完整的表会自动重建
+- **数据保护** - 表重建时自动备份和恢复兼容列的数据
+- **索引管理** - 自动创建缺失的数据库索引，优化查询性能
+
+#### ⚡ 优化改进
+- 简化数据库升级流程，无需手动执行迁移脚本
+- 支持从 v2.0.0、v2.1.0 自动升级到 v2.2.0
+- 改进错误处理和日志输出，便于问题排查
+- 优化迁移脚本，支持跨版本升级
+
+#### 🐛 问题修复
+- 修复数据库表结构不完整导致的功能异常
+- 修复索引缺失导致的查询性能问题
+- 修复版本升级时表结构不一致的问题
+
 ### v2.1.0 (2026-01-05)
 
 #### ✨ 新功能
@@ -405,6 +425,26 @@ The script automatically completes the following steps:
 This project is open-sourced under the [MIT License](LICENSE).
 
 ## 📋 Changelog
+
+### v2.2.0 (2026-01-05)
+
+#### ✨ New Features
+- **Automatic Database Migration** - Added automatic database version detection and migration
+- **Integrity Check** - Automatic database integrity check and repair on application startup
+- **Table Structure Validation** - Automatically detects and rebuilds incomplete or missing tables
+- **Data Protection** - Automatic backup and recovery of compatible column data during table rebuild
+- **Index Management** - Automatically creates missing database indexes for optimal query performance
+
+#### ⚡ Improvements
+- Simplified database upgrade process, no manual migration script execution required
+- Supports automatic upgrade from v2.0.0 and v2.1.0 to v2.2.0
+- Improved error handling and logging for easier troubleshooting
+- Optimized migration scripts to support cross-version upgrades
+
+#### 🐛 Bug Fixes
+- Fixed functional issues caused by incomplete database table structures
+- Fixed query performance issues caused by missing indexes
+- Fixed table structure inconsistencies during version upgrades
 
 ### v2.1.0 (2026-01-05)
 
