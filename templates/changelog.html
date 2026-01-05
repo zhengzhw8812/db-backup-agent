@@ -169,6 +169,59 @@
 
         <div class="version-card">
             <div class="version-header">
+                <div class="version-number">v2.2.0</div>
+                <div class="version-date">2026-01-05</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 新功能</div>
+                <ul class="change-list">
+                    <li class="change-item feature">添加数据库连接测试功能，保存配置前可验证连接是否有效</li>
+                    <li class="change-item feature">支持从服务器动态获取数据库列表，避免手动输入错误的数据库名</li>
+                    <li class="change-item feature">数据库列表以下拉选择框形式展示，包含"所有数据库"选项</li>
+                    <li class="change-item feature">支持单个数据库立即备份，点击单个数据库的备份按钮只备份该数据库</li>
+                    <li class="change-item feature">PostgreSQL 支持备份所有数据库（排除系统模板数据库）</li>
+                    <li class="change-item feature">测试连接成功后自动加载数据库列表，优化用户体验</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">⚡ 优化改进</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">优化数据库配置表单，添加连接测试和数据库列表刷新按钮</li>
+                    <li class="change-item improvement">改进数据库名显示逻辑，空值显示为"所有数据库"</li>
+                    <li class="change-item improvement">优化备份脚本，支持按数据库 ID 过滤进行单个备份</li>
+                    <li class="change-item improvement">改进前端表单验证，使用自定义验证替代浏览器默认验证</li>
+                    <li class="change-item improvement">优化备份历史记录和系统日志的数据持久化</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🐛 问题修复</div>
+                <ul class="change-list">
+                    <li class="change-item fix">修复选择错误数据库名仍可保存并生成 0KB 空备份文件的问题</li>
+                    <li class="change-item fix">修复 PostgreSQL 选择"所有数据库"时备份文件为空的问题</li>
+                    <li class="change-item fix">修复首页 PostgreSQL/MySQL 数据库名显示不正确的问题</li>
+                    <li class="change-item fix">修复点击单个数据库备份按钮会触发所有数据库备份的问题</li>
+                    <li class="change-item fix">修复备份历史列表为空的问题（数据库表未初始化）</li>
+                    <li class="change-item fix">修复 MySQL 获取数据库列表的 SQL 语法错误</li>
+                    <li class="change-item fix">修复数据库名字段名不一致导致的显示问题（db → db_name）</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">📦 技术更新</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">添加 psycopg2-binary 和 pymysql Python 依赖</li>
+                    <li class="change-item improvement">完善数据库初始化脚本，自动创建所需表结构</li>
+                    <li class="change-item improvement">优化配置管理器，返回数据中包含数据库 ID</li>
+                    <li class="change-item improvement">改进备份脚本参数传递，支持数据库 ID 过滤</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
                 <div class="version-number">v2.1.0</div>
                 <div class="version-date">2026-01-05</div>
             </div>

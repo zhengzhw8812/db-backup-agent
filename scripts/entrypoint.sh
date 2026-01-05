@@ -40,18 +40,26 @@ update_cron_from_config() {
 # 1. 初始化：将环境变量写入 /etc/environment，以便 cron 作业可以访问
 printenv | grep -v "no_proxy" > /etc/environment
 
-# 2. 从配置文件设置初始的 cron 计划
+# 2. 检查并执行数据库迁移
+echo "检查数据库迁移..."
+if [ -f "/migrate_db.py" ]; then
+    python3 /migrate_db.py
+else
+    echo "未找到迁移脚本，跳过迁移"
+fi
+
+# 3. 从配置文件设置初始的 cron 计划
 update_cron_from_config
 
-# 3. 创建并设置 cron 日志文件
+# 4. 创建并设置 cron 日志文件
 echo "确保 cron 日志文件存在..."
 touch /var/log/cron.log
 chmod 0644 /var/log/cron.log
 
-# 4. 启动 cron 服务 (在后台运行)
+# 5. 启动 cron 服务 (在后台运行)
 echo "启动 cron 服务..."
 cron
 
-# 5. 启动 Flask 应用 (在前台运行，以便 Docker 日志可以捕获输出)
+# 6. 启动 Flask 应用 (在前台运行，以便 Docker 日志可以捕获输出)
 echo "启动 Flask Web 服务器..."
 exec python3 /app.py

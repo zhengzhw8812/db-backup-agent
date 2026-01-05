@@ -416,8 +416,8 @@ def get_db_config_for_shell(db_type):
     connections = get_database_connections(db_type)
     output = []
     for conn in connections:
-        # 输出格式: host;port;user;password;db_name
-        output.append(f"{conn['host']};{conn['port']};{conn['user']};{conn['password']};{conn['db_name']}")
+        # 输出格式: host;port;user;password;db_name;id
+        output.append(f"{conn['host']};{conn['port']};{conn['user']};{conn['password']};{conn['db_name']};{conn['id']}")
     return '\n'.join(output)
 
 

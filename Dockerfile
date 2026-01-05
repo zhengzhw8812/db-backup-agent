@@ -61,6 +61,7 @@ RUN sed -i -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' /usr/local/bin/backup.sh && \
 # 复制应用文件
 COPY app.py /app.py
 COPY db_init.py /db_init.py
+COPY migrate_db.py /migrate_db.py
 COPY config_manager.py /config_manager.py
 COPY backup_logger.py /app/backup_logger.py
 COPY system_logger.py /app/system_logger.py
@@ -74,9 +75,6 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /requirements.txt
 
 # 确保 backups 目录存在且有正确权限
 RUN mkdir -p /backups && chmod 755 /backups
-
-# 初始化用户数据库 (放在 backups 目录下)
-RUN python3 /db_init.py
 
 EXPOSE 5001
 
