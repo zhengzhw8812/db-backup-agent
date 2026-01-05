@@ -16,8 +16,7 @@ build/
 # 备份文件
 backups/*.gz
 backups/*.tar.gz
-backups/logs/
-backups/config.json
+backups/users.db  # 数据库文件（包含所有配置和用户数据）
 
 # 环境变量
 .env
@@ -36,4 +35,4 @@ Thumbs.db
 
 # Claude
 .claude/
-*.sh
+claude_code_env.sh

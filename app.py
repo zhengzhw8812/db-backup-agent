@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+import sys
 import json
 import os
 import subprocess
@@ -21,7 +22,6 @@ login_manager.login_message = '请先登录以访问此页面'
 
 # 获取项目根目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, 'backups', 'config.json')
 BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
 DB_FILE = os.path.join(BASE_DIR, 'backups', 'users.db')
 
@@ -71,42 +71,59 @@ def init_db():
     conn.commit()
     conn.close()
 
-# 在应用启动时初始化数据库
+# 在应用启动时初始化数据库和配置表
 init_db()
+sys.path.insert(0, BASE_DIR)
+from config_manager import init_config_tables
+init_config_tables()
 
 # --- 辅助函数 ---
 
 def load_config():
-    """加载配置文件，如果文件不存在或为空，则返回一个默认结构。"""
-    if os.path.exists(CONFIG_FILE) and os.path.getsize(CONFIG_FILE) > 0:
-        with open(CONFIG_FILE, 'r') as f:
-            try:
-                config = json.load(f)
-                # 兼容旧版配置，确保 schedules 和 retention_days 字典存在
-                config.setdefault('schedules', {})
-                config.setdefault('retention_days', {'postgresql': 7, 'mysql': 7})
-                # 如果是旧版的单一 retention_days，迁移到新结构
-                if isinstance(config.get('retention_days'), int):
-                    old_days = config['retention_days']
-                    config['retention_days'] = {'postgresql': old_days, 'mysql': old_days}
-                return config
-            except json.JSONDecodeError:
-                pass  # 文件损坏或为空，返回默认值
-    # 默认结构
-    return {
-        "postgresql": [],
-        "mysql": [],
-        "retention_days": {"postgresql": 7, "mysql": 7},
-        "schedules": {}
-    }
+    """从数据库加载配置"""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import get_all_config
+        return get_all_config()
+    except Exception as e:
+        print(f"从数据库加载配置失败: {str(e)}")
+        # 返回默认配置
+        return {
+            "postgresql": [],
+            "mysql": [],
+            "retention_days": {"postgresql": 7, "mysql": 7},
+            "schedules": {},
+            "notifications": {
+                'enabled': False,
+                'on_success': True,
+                'on_failure': True,
+                'email': {
+                    'enabled': False,
+                    'smtp_server': '',
+                    'smtp_port': 587,
+                    'use_tls': True,
+                    'username': '',
+                    'password': '',
+                    'from_address': '',
+                    'recipients': []
+                },
+                'wechat': {
+                    'enabled': False,
+                    'corp_id': '',
+                    'corp_secret': '',
+                    'agent_id': '',
+                    'to_users': '@all'
+                }
+            }
+        }
 
 def save_config(config):
-    """将配置保存到文件。"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
+    """保存配置到数据库（已废弃，保留向后兼容）"""
+    # 不再保存到文件，所有配置通过数据库管理
+    pass
 
 def update_crontab():
-    """从 config.json 读取计划并更新系统的 crontab。"""
+    """从数据库读取计划并更新系统的 crontab。"""
     config = load_config()
     cron_file_path = "/etc/cron.d/backup-cron"
     
@@ -197,56 +214,31 @@ def _humanize_cron(cron_str):
     return "自定义计划"
 
 
-HISTORY_LOG_FILE = os.path.join(BACKUP_DIR, 'backup_history.log')
-
 def load_backup_history():
-    """加载并解析备份历史日志，返回最近7天的记录。"""
-    if not os.path.exists(HISTORY_LOG_FILE):
+    """从数据库加载备份历史日志。"""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("backup_logger", "/app/backup_logger.py")
+        backup_logger = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(backup_logger)
+
+        db_history = backup_logger.get_recent_backups(limit=50)
+
+        # 转换数据库格式为前端需要的格式
+        formatted_history = []
+        for record in db_history:
+            formatted_history.append({
+                'timestamp': record['created_at'],
+                'db_type': record['db_type'],
+                'trigger': record['trigger_type'],
+                'status': record['status'],
+                'message': record['message'],
+                'log_file': record.get('log_file')
+            })
+        return formatted_history
+    except Exception as e:
+        print(f"从数据库加载备份历史失败: {str(e)}")
         return []
-
-    history = []
-    one_week_ago = datetime.now() - timedelta(days=7)
-
-    with open(HISTORY_LOG_FILE, 'r') as f:
-        for line in f:
-            parts = line.strip().split(' | ')
-
-            if len(parts) == 5:
-                # 格式: timestamp | db_type | trigger | status | message
-                timestamp, db_type, trigger, status, message = parts
-                history.append({
-                    'timestamp': timestamp,
-                    'db_type': db_type,
-                    'trigger': trigger,
-                    'status': status,
-                    'message': message,
-                    'log_file': None
-                })
-            elif len(parts) == 6:
-                # 格式: timestamp | db_type | trigger | status | message | log_file
-                timestamp, db_type, trigger, status, message, log_file = parts
-                history.append({
-                    'timestamp': timestamp,
-                    'db_type': db_type,
-                    'trigger': trigger,
-                    'status': status,
-                    'message': message,
-                    'log_file': log_file if log_file else None
-                })
-
-    # 按时间倒序排序，并只保留最近7天的记录
-    filtered_history = []
-    for item in history:
-        try:
-            # 解析时间戳 (格式: 2025-01-04 12:00:00)
-            item_time = datetime.strptime(item['timestamp'], '%Y-%m-%d %H:%M:%S')
-            if item_time >= one_week_ago:
-                filtered_history.append(item)
-        except ValueError:
-            # 如果时间解析失败，仍然保留该记录
-            filtered_history.append(item)
-
-    return sorted(filtered_history, key=lambda x: x['timestamp'], reverse=True)
 
 
 # --- 路由 ---
@@ -402,11 +394,19 @@ def index():
 @app.route('/add_db', methods=['POST'])
 def add_db():
     """添加或更新数据库配置。"""
-    config = load_config()
     db_type = request.form.get('type')
     edit_id = request.form.get('edit_id')  # 获取编辑ID
 
     if db_type in ['postgresql', 'mysql']:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import add_database_connection, update_database_connection
+
+        host = request.form.get('host')
+        port = request.form.get('port')
+        user = request.form.get('user')
+        password = request.form.get('password')
+        db_name = request.form.get('db')
+
         if edit_id:
             # 编辑模式:更新现有配置
             # edit_id 格式: "postgresql-uuid" 或 "mysql-uuid"
@@ -414,53 +414,30 @@ def add_db():
             if len(parts) == 2:
                 edit_type, actual_id = parts
                 if edit_type == db_type:
-                    # 查找并更新
-                    for i, db in enumerate(config[db_type]):
-                        if db.get('id') == actual_id:
-                            config[db_type][i] = {
-                                "id": actual_id,
-                                "host": request.form.get('host'),
-                                "port": request.form.get('port'),
-                                "user": request.form.get('user'),
-                                "password": request.form.get('password'),
-                                "db": request.form.get('db')
-                            }
-                            save_config(config)
-                            break
+                    update_database_connection(actual_id, db_type, host, port, user, password, db_name)
         else:
             # 新增模式
-            new_db = {
-                "id": str(uuid.uuid4()), # 分配唯一ID
-                "host": request.form.get('host'),
-                "port": request.form.get('port'),
-                "user": request.form.get('user'),
-                "password": request.form.get('password'),
-                "db": request.form.get('db')
-            }
-            config[db_type].append(new_db)
-            save_config(config)
+            add_database_connection(db_type, host, port, user, password, db_name)
 
     return redirect(url_for('index'))
 
 @app.route('/delete_db/<db_type>/<db_id>', methods=['GET', 'POST'])
 def delete_db(db_type, db_id):
     """根据ID删除一个数据库配置。"""
-    config = load_config()
-    if db_type in config and isinstance(config[db_type], list):
-        # 通过ID过滤掉要删除的项
-        config[db_type] = [db for db in config[db_type] if db.get('id') != db_id]
-        save_config(config)
+    sys.path.insert(0, BASE_DIR)
+    from config_manager import delete_database_connection
+    delete_database_connection(db_id)
     return redirect(url_for('index'))
 
 @app.route('/get_db/<db_type>/<db_id>')
 @login_required
 def get_db(db_type, db_id):
     """获取指定数据库配置的详情,用于编辑。"""
-    config = load_config()
-    if db_type in config and isinstance(config[db_type], list):
-        for db in config[db_type]:
-            if db.get('id') == db_id:
-                return jsonify(db)
+    sys.path.insert(0, BASE_DIR)
+    from config_manager import get_database_connection
+    db = get_database_connection(db_id)
+    if db:
+        return jsonify(db)
     return jsonify({'error': 'Database not found'}), 404
 
 @app.route('/backup_now/<db_type>', methods=['POST'])
@@ -470,13 +447,22 @@ def backup_now(db_type):
     task_status = '未启动 (未配置)'
 
     try:
-        if db_type == 'postgresql' and config.get('postgresql'):
-            subprocess.Popen(['/usr/local/bin/backup.sh', 'postgresql', '手动'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            task_status = '启动'
-        elif db_type == 'mysql' and config.get('mysql'):
-            subprocess.Popen(['/usr/local/bin/backup.sh', 'mysql', '手动'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            task_status = '启动'
-        
+        if db_type == 'postgresql' and config.get('postgresql') and len(config.get('postgresql', [])) > 0:
+            # 使用 shell 在后台运行
+            subprocess.Popen(
+                '/usr/local/bin/backup.sh postgresql 手动 >/dev/null 2>&1 &',
+                shell=True,
+                start_new_session=True
+            )
+            task_status = '已启动'
+        elif db_type == 'mysql' and config.get('mysql') and len(config.get('mysql', [])) > 0:
+            subprocess.Popen(
+                '/usr/local/bin/backup.sh mysql 手动 >/dev/null 2>&1 &',
+                shell=True,
+                start_new_session=True
+            )
+            task_status = '已启动'
+
         return jsonify({'status': 'success', 'task': task_status})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -484,25 +470,25 @@ def backup_now(db_type):
 @app.route('/save_settings', methods=['POST'])
 def save_settings():
     """保存单个数据库类型的计划设置。"""
-    config = load_config()
     db_type = request.form.get('db_type', '')
 
     if not db_type or db_type not in ['postgresql', 'mysql']:
         return redirect(url_for('index'))
 
     try:
-        # 确保 retention_days 是字典结构
-        if not isinstance(config.get('retention_days'), dict):
-            config['retention_days'] = {'postgresql': 7, 'mysql': 7}
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import save_backup_schedule
 
         # 保存当前数据库类型的保留天数
-        config['retention_days'][db_type] = int(request.form.get('retention_days', 7))
+        retention_days = int(request.form.get('retention_days', 7))
 
         frequency = request.form.get('frequency', 'disabled')
 
         if frequency == 'disabled':
-            cron_expr = 'disabled'
+            schedule_type = 'disabled'
+            cron_expr = ''
         elif frequency == 'daily':
+            schedule_type = 'daily'
             time_str = request.form.get('time', '02:00')
             try:
                 hour, minute = time_str.split(':')
@@ -510,6 +496,7 @@ def save_settings():
                 hour, minute = '2', '0'
             cron_expr = f"{minute} {hour} * * *"
         elif frequency == 'weekly':
+            schedule_type = 'weekly'
             time_str = request.form.get('time', '02:00')
             weekday = request.form.get('weekday', '0')
             try:
@@ -518,6 +505,7 @@ def save_settings():
                 hour, minute = '2', '0'
             cron_expr = f"{minute} {hour} * * {weekday}"
         elif frequency == 'monthly':
+            schedule_type = 'monthly'
             time_str = request.form.get('time', '02:00')
             day_of_month = request.form.get('day_of_month', '1')
             try:
@@ -526,13 +514,11 @@ def save_settings():
                 hour, minute = '2', '0'
             cron_expr = f"{minute} {hour} {day_of_month} * *"
         else:
-            cron_expr = 'disabled'
+            schedule_type = 'disabled'
+            cron_expr = ''
 
-        if 'schedules' not in config:
-            config['schedules'] = {}
-
-        config['schedules'][db_type] = cron_expr
-        save_config(config)
+        # 保存到数据库
+        save_backup_schedule(db_type, schedule_type, cron_expr, retention_days)
 
         # 更新 crontab
         update_crontab()
@@ -595,6 +581,296 @@ def get_log_content(filename):
         return jsonify({'content': content})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# --- 通知配置路由 ---
+
+@app.route('/notifications')
+@login_required
+def notifications():
+    """通知配置页面"""
+    config = load_config()
+    notifications_config = config.get('notifications', {})
+    return render_template('notifications.html', notifications=notifications_config)
+
+@app.route('/changelog')
+@login_required
+def changelog():
+    """版本更新说明页面"""
+    return render_template('changelog.html')
+
+
+@app.route('/notifications/save', methods=['POST'])
+def save_notifications():
+    """保存通知配置（保留以兼容旧版本）"""
+    return save_notifications_all()
+
+
+@app.route('/notifications/save/global', methods=['POST'])
+def save_global_notification():
+    """保存全局通知配置"""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import save_global_notification_config
+
+        # 获取表单数据（checkbox 选中时为 'on'，未选中时不存在）
+        enabled = request.form.get('enabled') is not None
+        on_success = request.form.get('on_success') is not None
+        on_failure = request.form.get('on_failure') is not None
+
+        # 保存到数据库
+        save_global_notification_config(enabled, on_success, on_failure)
+
+        flash('全局通知设置已保存', 'success')
+        return redirect(url_for('notifications'))
+
+    except Exception as e:
+        flash(f'保存配置失败: {str(e)}', 'danger')
+        return redirect(url_for('notifications'))
+
+
+@app.route('/notifications/save/email', methods=['POST'])
+def save_email_notification():
+    """保存邮件通知配置"""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import save_email_notification_config
+
+        # 邮件配置
+        email_config = {
+            'enabled': request.form.get('email_enabled') is not None,
+            'smtp_server': request.form.get('smtp_server', ''),
+            'smtp_port': int(request.form.get('smtp_port', 587) or 587),
+            'use_tls': request.form.get('use_tls') is not None,
+            'username': request.form.get('email_username', ''),
+            'password': request.form.get('email_password', ''),
+            'from_address': request.form.get('from_address', ''),
+            'recipients': [r.strip() for r in request.form.get('recipients', '').split(',') if r.strip()]
+        }
+
+        # 保存到数据库
+        save_email_notification_config(email_config)
+
+        flash('邮件通知设置已保存', 'success')
+        return redirect(url_for('notifications'))
+
+    except Exception as e:
+        flash(f'保存配置失败: {str(e)}', 'danger')
+        return redirect(url_for('notifications'))
+
+
+@app.route('/notifications/save/wechat', methods=['POST'])
+def save_wechat_notification():
+    """保存企业微信通知配置"""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import save_wechat_notification_config
+
+        # 企业微信配置
+        wechat_config = {
+            'enabled': request.form.get('wechat_enabled') is not None,
+            'corp_id': request.form.get('corp_id', ''),
+            'corp_secret': request.form.get('corp_secret', ''),
+            'agent_id': request.form.get('agent_id', ''),
+            'to_users': request.form.get('to_users', '@all')
+        }
+
+        # 保存到数据库
+        save_wechat_notification_config(wechat_config)
+
+        flash('企业微信通知设置已保存', 'success')
+        return redirect(url_for('notifications'))
+
+    except Exception as e:
+        flash(f'保存配置失败: {str(e)}', 'danger')
+        return redirect(url_for('notifications'))
+
+
+def save_notifications_all():
+    """保存所有通知配置（旧版兼容）"""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from config_manager import save_notification_config
+
+        # 获取表单数据（checkbox 选中时为 'on'，未选中时不存在）
+        enabled = request.form.get('enabled') is not None
+        on_success = request.form.get('on_success') is not None
+        on_failure = request.form.get('on_failure') is not None
+
+        # 邮件配置
+        email_enabled = request.form.get('email_enabled') is not None
+        email_config = {
+            'enabled': email_enabled,
+            'smtp_server': request.form.get('smtp_server', ''),
+            'smtp_port': int(request.form.get('smtp_port', 587) or 587),
+            'use_tls': request.form.get('use_tls') is not None,
+            'username': request.form.get('email_username', ''),
+            'password': request.form.get('email_password', ''),
+            'from_address': request.form.get('from_address', ''),
+            'recipients': [r.strip() for r in request.form.get('recipients', '').split(',') if r.strip()]
+        }
+
+        # 企业微信配置
+        wechat_enabled = request.form.get('wechat_enabled') is not None
+        wechat_config = {
+            'enabled': wechat_enabled,
+            'corp_id': request.form.get('corp_id', ''),
+            'corp_secret': request.form.get('corp_secret', ''),
+            'agent_id': request.form.get('agent_id', ''),
+            'to_users': request.form.get('to_users', '@all')
+        }
+
+        # 保存到数据库
+        save_notification_config(enabled, on_success, on_failure, email_config, wechat_config)
+
+        flash('通知配置已保存', 'success')
+        return redirect(url_for('notifications'))
+
+    except Exception as e:
+        flash(f'保存配置失败: {str(e)}', 'danger')
+        return redirect(url_for('notifications'))
+
+
+@app.route('/notifications/test', methods=['POST'])
+def test_notification():
+    """测试通知发送"""
+    config = load_config()
+    notifications_config = config.get('notifications', {})
+
+    test_type = request.form.get('test_type')  # 'email' 或 'wechat'
+
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("notifications", "/app/notifications.py")
+        notifications = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(notifications)
+
+        if test_type == 'email':
+            email_config = notifications_config.get('email', {})
+
+            # 检查基本配置是否完整
+            if not email_config.get('smtp_server') or not email_config.get('username'):
+                return jsonify({'success': False, 'message': '邮件配置不完整，请先填写 SMTP 服务器和用户名'})
+
+            # 如果未启用，允许测试但给出提示
+            if not email_config.get('enabled'):
+                print("警告：邮件通知当前未启用，但正在发送测试邮件")
+
+            notifier = notifications.EmailNotifier(email_config)
+            success = notifier.send(
+                '数据库备份系统测试通知',
+                '这是一封测试邮件，用于验证邮件通知配置是否正确。\n\n如果您收到这封邮件，说明配置成功！',
+                is_html=False
+            )
+
+            if success:
+                return jsonify({'success': True, 'message': '测试邮件已发送'})
+            else:
+                return jsonify({'success': False, 'message': '发送测试邮件失败'})
+
+        elif test_type == 'wechat':
+            wechat_config = notifications_config.get('wechat', {})
+
+            app.logger.info(f"企业微信测试，配置: {wechat_config}")
+
+            # 检查基本配置是否完整
+            if not wechat_config.get('corp_id') or not wechat_config.get('corp_secret') or not wechat_config.get('agent_id'):
+                app.logger.error("企业微信配置不完整")
+                return jsonify({'success': False, 'message': '企业微信配置不完整，请先填写 Corp ID、Secret 和 Agent ID'})
+
+            # 如果未启用，允许测试但给出提示
+            if not wechat_config.get('enabled'):
+                app.logger.warning("企业微信通知当前未启用，但正在发送测试消息")
+
+            app.logger.info("开始创建企业微信通知器...")
+
+            # 设置 notifications 模块的 logger 使用 Flask 的 logger
+            notifications.logger = app.logger
+
+            notifier = notifications.WeChatNotifier(wechat_config)
+
+            app.logger.info("开始发送测试消息...")
+            success = notifier.send(
+                '数据库备份系统测试通知',
+                '这是一条测试消息，用于验证企业微信通知配置是否正确。\n\n如果您收到这条消息，说明配置成功！'
+            )
+
+            app.logger.info(f"发送结果: {success}")
+
+            if success:
+                return jsonify({'success': True, 'message': '测试消息已发送'})
+            else:
+                return jsonify({'success': False, 'message': '发送测试消息失败'})
+
+    except Exception as e:
+        app.logger.error(f"测试通知异常: {str(e)}")
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'测试失败: {str(e)}'})
+
+
+# --- 备份历史和统计 API ---
+
+@app.route('/api/backup/history')
+@login_required
+def api_backup_history():
+    """获取备份历史记录（支持分页和过滤）"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        db_type = request.args.get('db_type')
+        status = request.args.get('status')
+
+        sys.path.insert(0, BASE_DIR)
+        from backup_logger import get_backup_history
+
+        history = get_backup_history(
+            limit=limit,
+            offset=offset,
+            db_type=db_type,
+            status=status
+        )
+
+        return jsonify({'success': True, 'data': history})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/statistics')
+@login_required
+def api_backup_statistics():
+    """获取备份统计信息"""
+    try:
+        days = request.args.get('days', 7, type=int)
+
+        sys.path.insert(0, BASE_DIR)
+        from backup_logger import get_backup_statistics
+
+        stats = get_backup_statistics(days=days)
+
+        return jsonify({'success': True, 'data': stats})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/system/logs')
+@login_required
+def api_system_logs():
+    """获取系统日志"""
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        log_type = request.args.get('type', None)
+        category = request.args.get('category', None)
+
+        sys.path.insert(0, BASE_DIR)
+        from system_logger import get_logs
+
+        logs = get_logs(limit=limit, log_type=log_type, category=category)
+
+        return jsonify({'success': True, 'data': logs})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)

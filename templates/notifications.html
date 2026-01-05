@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通知设置 - 数据库备份管理器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .notifications-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 20px;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .back-button {
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .back-button:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .notification-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title .icon {
+            font-size: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .form-row:last-child {
+            border-bottom: none;
+        }
+
+        .form-label {
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .form-description {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--secondary-color);
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="email"],
+        .form-group input[type="password"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px var(--primary-light);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn-primary,
+        .btn-secondary {
+            padding: 10px 24px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+        }
+
+        .btn-test {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: var(--success-color);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-test:hover {
+            background: var(--success-dark);
+        }
+
+        .test-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-top: 16px;
+        }
+
+        .test-info {
+            flex: 1;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 24px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: var(--success-light);
+            color: var(--success-dark);
+            border: 1px solid #b7eb8f;
+        }
+
+        .alert-danger {
+            background: var(--danger-light);
+            color: var(--danger-dark);
+            border: 1px solid #ffccc7;
+        }
+
+        .config-disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">数据库备份管理器</h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
+                <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="notifications-container">
+        <div class="page-header">
+            <h1>通知设置</h1>
+            <a href="{{ url_for('index') }}" class="back-button">← 返回主页</a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- 全局设置表单 -->
+        <form action="{{ url_for('save_global_notification') }}" method="post" id="global-form">
+            <div class="notification-card">
+                <div class="card-title">
+                    <span class="icon">🔔</span>
+                    全局设置
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <div class="form-label">启用通知</div>
+                        <div class="form-description">开启后将根据配置发送备份结果通知</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" name="enabled" id="enabled" {% if notifications.enabled %}checked{% endif %}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <div class="form-label">通知时机</div>
+                        <div class="form-description">选择在什么情况下发送通知</div>
+                    </div>
+                    <div class="checkbox-group">
+                        <label class="checkbox-item">
+                            <input type="checkbox" name="on_success" id="on_success" {% if notifications.on_success %}checked{% endif %}>
+                            <span>备份成功</span>
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="checkbox" name="on_failure" id="on_failure" {% if notifications.on_failure %}checked{% endif %}>
+                            <span>备份失败</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div style="margin-top: 16px; text-align: right;">
+                    <button type="submit" class="btn-primary">保存全局设置</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- 邮件通知表单 -->
+        <form action="{{ url_for('save_email_notification') }}" method="post" id="email-form">
+            <div class="notification-card">
+                <div class="card-title">
+                    <span class="icon">📧</span>
+                    邮件通知
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <div class="form-label">启用邮件通知</div>
+                        <div class="form-description">通过 SMTP 服务器发送邮件通知</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" name="email_enabled" id="email_enabled" {% if notifications.email.enabled %}checked{% endif %}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div id="email-config" class="{% if not notifications.email.enabled %}config-disabled{% endif %}">
+                    <div class="form-group">
+                        <label for="smtp_server">SMTP 服务器</label>
+                        <input type="text" name="smtp_server" id="smtp_server" value="{{ notifications.email.smtp_server }}" placeholder="例如: smtp.gmail.com">
+                        <div class="form-hint">输入您的 SMTP 服务器地址</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="smtp_port">SMTP 端口</label>
+                        <input type="number" name="smtp_port" id="smtp_port" value="{{ notifications.email.smtp_port }}" placeholder="587">
+                        <div class="form-hint">常用端口: 587 (TLS), 465 (SSL), 25 (无加密)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="use_tls">使用 TLS 加密</label>
+                        <label class="switch">
+                            <input type="checkbox" name="use_tls" id="use_tls" {% if notifications.email.use_tls %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email_username">SMTP 用户名</label>
+                        <input type="text" name="email_username" id="email_username" value="{{ notifications.email.username }}" placeholder="您的邮箱地址">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="from_address">发件人地址</label>
+                        <input type="email" name="from_address" id="from_address" value="{{ notifications.email.from_address }}" placeholder="noreply@example.com">
+                        <div class="form-hint">显示在邮件的发件人字段</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email_password">SMTP 密码 / 应用密码</label>
+                        <input type="password" name="email_password" id="email_password" value="{{ notifications.email.password }}" placeholder="您的邮箱密码或应用专用密码">
+                        <div class="form-hint">某些邮箱服务需要使用应用专用密码而非登录密码</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="recipients">收件人列表</label>
+                        <textarea name="recipients" id="recipients" placeholder="admin@example.com, user@example.com">{{ notifications.email.recipients | join(', ') }}</textarea>
+                        <div class="form-hint">多个收件人用逗号分隔</div>
+                    </div>
+
+                    <div class="test-section">
+                        <div class="test-info">发送一封测试邮件以验证配置是否正确</div>
+                        <button type="button" class="btn-test" onclick="testNotification('email')">📧 发送测试邮件</button>
+                    </div>
+
+                    <div style="margin-top: 16px; text-align: right;">
+                        <button type="submit" class="btn-primary">保存邮件设置</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <!-- 企业微信通知表单 -->
+        <form action="{{ url_for('save_wechat_notification') }}" method="post" id="wechat-form">
+            <div class="notification-card">
+                <div class="card-title">
+                    <span class="icon">💬</span>
+                    企业微信通知
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <div class="form-label">启用企业微信通知</div>
+                        <div class="form-description">通过企业微信应用推送消息</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" name="wechat_enabled" id="wechat_enabled" {% if notifications.wechat.enabled %}checked{% endif %}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div id="wechat-config" class="{% if not notifications.wechat.enabled %}config-disabled{% endif %}">
+                    <div class="form-group">
+                        <label for="corp_id">Corp ID</label>
+                        <input type="text" name="corp_id" id="corp_id" value="{{ notifications.wechat.corp_id }}" placeholder="wwxxxxx">
+                        <div class="form-hint">企业微信的企业 ID，可在企业微信管理后台查看</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="corp_secret">Corp Secret</label>
+                        <input type="password" name="corp_secret" id="corp_secret" value="{{ notifications.wechat.corp_secret }}" placeholder="应用的 Secret">
+                        <div class="form-hint">应用的凭证密钥，可在企业微信应用管理页面查看</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="agent_id">Agent ID</label>
+                        <input type="number" name="agent_id" id="agent_id" value="{{ notifications.wechat.agent_id }}" placeholder="1000001">
+                        <div class="form-hint">应用的 Agent ID，可在企业微信应用管理页面查看</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="to_users">接收用户</label>
+                        <input type="text" name="to_users" id="to_users" value="{{ notifications.wechat.to_users }}" placeholder="@all 或UserID">
+                        <div class="form-hint">@all 表示发送给所有人，也可指定用户 ID，多个用户用 | 分隔</div>
+                    </div>
+
+                    <div class="test-section">
+                        <div class="test-info">发送一条测试消息以验证配置是否正确</div>
+                        <button type="button" class="btn-test" onclick="testNotification('wechat')">💬 发送测试消息</button>
+                    </div>
+
+                    <div style="margin-top: 16px; text-align: right;">
+                        <button type="submit" class="btn-primary">保存企业微信设置</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div style="text-align: center; margin-top: 24px;">
+            <a href="{{ url_for('index') }}" class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 10px 24px;">返回主页</a>
+        </div>
+    </div>
+
+    <script>
+        // 切换配置区域显示/隐藏
+        document.getElementById('email_enabled').addEventListener('change', function() {
+            const config = document.getElementById('email-config');
+            if (this.checked) {
+                config.classList.remove('config-disabled');
+            } else {
+                config.classList.add('config-disabled');
+            }
+        });
+
+        document.getElementById('wechat_enabled').addEventListener('change', function() {
+            const config = document.getElementById('wechat-config');
+            if (this.checked) {
+                config.classList.remove('config-disabled');
+            } else {
+                config.classList.add('config-disabled');
+            }
+        });
+
+        // 测试通知
+        function testNotification(type) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("test_notification") }}';
+
+            const testType = document.createElement('input');
+            testType.type = 'hidden';
+            testType.name = 'test_type';
+            testType.value = type;
+
+            form.appendChild(testType);
+            document.body.appendChild(form);
+
+            const button = event.target;
+            const originalText = button.textContent;
+            button.textContent = '发送中...';
+            button.disabled = true;
+
+            fetch('{{ url_for("test_notification") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'test_type=' + type
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('❌ 测试失败: ' + error);
+            })
+            .finally(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,40 +1,35 @@
 #!/bin/bash
 
-CONFIG_FILE="/backups/config.json"
+CONFIG_MANAGER="/config_manager.py"
 
-# 函数：从 config.json 更新 crontab
+# 函数：从数据库更新 crontab
 update_cron_from_config() {
-    echo "正在从配置文件更新 cron 计划..."
+    echo "正在从数据库配置更新 cron 计划..."
     CRON_FILE="/etc/cron.d/backup-cron"
 
     # 1. 创建一个干净的 crontab 文件并设置头部
     echo "SHELL=/bin/bash" > "$CRON_FILE"
     echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$CRON_FILE"
 
-    # 2. 检查配置文件是否存在
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "配置文件 $CONFIG_FILE 未找到。不设置任何 cron 任务。"
+    # 2. 为 PostgreSQL 设置 cron 任务
+    pg_schedule=$(python3 "$CONFIG_MANAGER" export 2>/dev/null | jq -r '.schedules.postgresql // "disabled"')
+    if [ "$pg_schedule" != "disabled" ] && [ -n "$pg_schedule" ]; then
+        echo "为 PostgreSQL 设置备份计划: $pg_schedule"
+        echo "$pg_schedule root /usr/local/bin/backup.sh postgresql 自动 >> /var/log/cron.log 2>&1" >> "$CRON_FILE"
     else
-        # 3. 为 PostgreSQL 设置 cron 任务
-        pg_schedule=$(jq -r '.schedules.postgresql // "disabled"' "$CONFIG_FILE")
-        if [ "$pg_schedule" != "disabled" ] && [ -n "$pg_schedule" ]; then
-            echo "为 PostgreSQL 设置备份计划: $pg_schedule"
-            echo "$pg_schedule root /usr/local/bin/backup.sh postgresql 自动 >> /var/log/cron.log 2>&1" >> "$CRON_FILE"
-        else
-            echo "PostgreSQL 的自动备份已禁用。"
-        fi
-
-        # 4. 为 MySQL 设置 cron 任务
-        mysql_schedule=$(jq -r '.schedules.mysql // "disabled"' "$CONFIG_FILE")
-        if [ "$mysql_schedule" != "disabled" ] && [ -n "$mysql_schedule" ]; then
-            echo "为 MySQL 设置备份计划: $mysql_schedule"
-            echo "$mysql_schedule root /usr/local/bin/backup.sh mysql 自动 >> /var/log/cron.log 2>&1" >> "$CRON_FILE"
-        else
-            echo "MySQL 的自动备份已禁用。"
-        fi
+        echo "PostgreSQL 的自动备份已禁用。"
     fi
 
-    # 5. 设置正确的文件权限并应用 crontab
+    # 3. 为 MySQL 设置 cron 任务
+    mysql_schedule=$(python3 "$CONFIG_MANAGER" export 2>/dev/null | jq -r '.schedules.mysql // "disabled"')
+    if [ "$mysql_schedule" != "disabled" ] && [ -n "$mysql_schedule" ]; then
+        echo "为 MySQL 设置备份计划: $mysql_schedule"
+        echo "$mysql_schedule root /usr/local/bin/backup.sh mysql 自动 >> /var/log/cron.log 2>&1" >> "$CRON_FILE"
+    else
+        echo "MySQL 的自动备份已禁用。"
+    fi
+
+    # 4. 设置正确的文件权限并应用 crontab
     chmod 0644 "$CRON_FILE"
     crontab "$CRON_FILE"
     echo "Cron 计划更新完成。"
