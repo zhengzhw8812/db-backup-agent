@@ -33,6 +33,17 @@
   - 测试通知页面 HTML 生成
   - 验证 checkbox 状态
 
+- **test_auto_migration.py** - 自动迁移测试脚本
+  - 测试数据库版本检测
+  - 测试表结构迁移
+
+### 开发工具
+
+- **claude_code_env.sh** - Claude Code 开发环境配置脚本
+  - 自动安装 Node.js 和 Claude Code CLI
+  - 配置 API 密钥和环境变量
+  - 用于本地开发环境设置
+
 ## 📝 说明
 
 这些文件是项目开发过程中产生的辅助文件，不是项目核心功能的一部分：

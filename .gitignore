@@ -32,7 +32,3 @@ backups/users.db  # 数据库文件（包含所有配置和用户数据）
 # OS
 .DS_Store
 Thumbs.db
-
-# Claude
-.claude/
-claude_code_env.sh
