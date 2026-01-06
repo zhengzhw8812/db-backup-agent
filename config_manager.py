@@ -292,44 +292,82 @@ def save_notification_config(enabled, on_success, on_failure, email_config, wech
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 更新主配置
-    cursor.execute('''
-        UPDATE notification_config
-        SET enabled=?, on_success=?, on_failure=?, updated_at=?
-        WHERE id=1
-    ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0, datetime.now()))
+    # 更新或插入主配置
+    cursor.execute('SELECT COUNT(*) as count FROM notification_config')
+    if cursor.fetchone()['count'] == 0:
+        cursor.execute('''
+            INSERT INTO notification_config (enabled, on_success, on_failure)
+            VALUES (?, ?, ?)
+        ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0))
+    else:
+        cursor.execute('''
+            UPDATE notification_config
+            SET enabled=?, on_success=?, on_failure=?, updated_at=?
+            WHERE id=1
+        ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0, datetime.now()))
 
-    # 更新邮件配置
-    cursor.execute('''
-        UPDATE email_notification_config
-        SET enabled=?, smtp_server=?, smtp_port=?, use_tls=?,
-            username=?, password=?, from_address=?, recipients=?, updated_at=?
-        WHERE id=1
-    ''', (
-        1 if email_config.get('enabled', False) else 0,
-        email_config.get('smtp_server', ''),
-        email_config.get('smtp_port', 587),
-        1 if email_config.get('use_tls', True) else 0,
-        email_config.get('username', ''),
-        email_config.get('password', ''),
-        email_config.get('from_address', ''),
-        ','.join(email_config.get('recipients', [])),
-        datetime.now()
-    ))
+    # 更新或插入邮件配置
+    cursor.execute('SELECT COUNT(*) as count FROM email_notification_config')
+    if cursor.fetchone()['count'] == 0:
+        cursor.execute('''
+            INSERT INTO email_notification_config
+            (enabled, smtp_server, smtp_port, use_tls, username, password, from_address, recipients)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            1 if email_config.get('enabled', False) else 0,
+            email_config.get('smtp_server', ''),
+            email_config.get('smtp_port', 587),
+            1 if email_config.get('use_tls', True) else 0,
+            email_config.get('username', ''),
+            email_config.get('password', ''),
+            email_config.get('from_address', ''),
+            ','.join(email_config.get('recipients', []))
+        ))
+    else:
+        cursor.execute('''
+            UPDATE email_notification_config
+            SET enabled=?, smtp_server=?, smtp_port=?, use_tls=?,
+                username=?, password=?, from_address=?, recipients=?, updated_at=?
+            WHERE id=1
+        ''', (
+            1 if email_config.get('enabled', False) else 0,
+            email_config.get('smtp_server', ''),
+            email_config.get('smtp_port', 587),
+            1 if email_config.get('use_tls', True) else 0,
+            email_config.get('username', ''),
+            email_config.get('password', ''),
+            email_config.get('from_address', ''),
+            ','.join(email_config.get('recipients', [])),
+            datetime.now()
+        ))
 
-    # 更新企业微信配置
-    cursor.execute('''
-        UPDATE wechat_notification_config
-        SET enabled=?, corp_id=?, corp_secret=?, agent_id=?, to_users=?, updated_at=?
-        WHERE id=1
-    ''', (
-        1 if wechat_config.get('enabled', False) else 0,
-        wechat_config.get('corp_id', ''),
-        wechat_config.get('corp_secret', ''),
-        wechat_config.get('agent_id', ''),
-        wechat_config.get('to_users', '@all'),
-        datetime.now()
-    ))
+    # 更新或插入企业微信配置
+    cursor.execute('SELECT COUNT(*) as count FROM wechat_notification_config')
+    if cursor.fetchone()['count'] == 0:
+        cursor.execute('''
+            INSERT INTO wechat_notification_config
+            (enabled, corp_id, corp_secret, agent_id, to_users)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            1 if wechat_config.get('enabled', False) else 0,
+            wechat_config.get('corp_id', ''),
+            wechat_config.get('corp_secret', ''),
+            wechat_config.get('agent_id', ''),
+            wechat_config.get('to_users', '@all')
+        ))
+    else:
+        cursor.execute('''
+            UPDATE wechat_notification_config
+            SET enabled=?, corp_id=?, corp_secret=?, agent_id=?, to_users=?, updated_at=?
+            WHERE id=1
+        ''', (
+            1 if wechat_config.get('enabled', False) else 0,
+            wechat_config.get('corp_id', ''),
+            wechat_config.get('corp_secret', ''),
+            wechat_config.get('agent_id', ''),
+            wechat_config.get('to_users', '@all'),
+            datetime.now()
+        ))
 
     conn.commit()
     conn.close()
@@ -340,11 +378,21 @@ def save_global_notification_config(enabled, on_success, on_failure):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        UPDATE notification_config
-        SET enabled=?, on_success=?, on_failure=?, updated_at=?
-        WHERE id=1
-    ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0, datetime.now()))
+    # 确保存在至少一条记录，然后更新它
+    cursor.execute('SELECT COUNT(*) as count FROM notification_config')
+    if cursor.fetchone()['count'] == 0:
+        # 如果没有记录，插入一条
+        cursor.execute('''
+            INSERT INTO notification_config (enabled, on_success, on_failure)
+            VALUES (?, ?, ?)
+        ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0))
+    else:
+        # 如果有记录，更新第一条
+        cursor.execute('''
+            UPDATE notification_config
+            SET enabled=?, on_success=?, on_failure=?, updated_at=?
+            WHERE id=1
+        ''', (1 if enabled else 0, 1 if on_success else 0, 1 if on_failure else 0, datetime.now()))
 
     conn.commit()
     conn.close()
@@ -355,22 +403,42 @@ def save_email_notification_config(email_config):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        UPDATE email_notification_config
-        SET enabled=?, smtp_server=?, smtp_port=?, use_tls=?,
-            username=?, password=?, from_address=?, recipients=?, updated_at=?
-        WHERE id=1
-    ''', (
-        1 if email_config.get('enabled', False) else 0,
-        email_config.get('smtp_server', ''),
-        email_config.get('smtp_port', 587),
-        1 if email_config.get('use_tls', True) else 0,
-        email_config.get('username', ''),
-        email_config.get('password', ''),
-        email_config.get('from_address', ''),
-        ','.join(email_config.get('recipients', [])),
-        datetime.now()
-    ))
+    # 确保存在至少一条记录，然后更新它
+    cursor.execute('SELECT COUNT(*) as count FROM email_notification_config')
+    if cursor.fetchone()['count'] == 0:
+        # 如果没有记录，插入一条
+        cursor.execute('''
+            INSERT INTO email_notification_config
+            (enabled, smtp_server, smtp_port, use_tls, username, password, from_address, recipients)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            1 if email_config.get('enabled', False) else 0,
+            email_config.get('smtp_server', ''),
+            email_config.get('smtp_port', 587),
+            1 if email_config.get('use_tls', True) else 0,
+            email_config.get('username', ''),
+            email_config.get('password', ''),
+            email_config.get('from_address', ''),
+            ','.join(email_config.get('recipients', []))
+        ))
+    else:
+        # 如果有记录，更新第一条
+        cursor.execute('''
+            UPDATE email_notification_config
+            SET enabled=?, smtp_server=?, smtp_port=?, use_tls=?,
+                username=?, password=?, from_address=?, recipients=?, updated_at=?
+            WHERE id=1
+        ''', (
+            1 if email_config.get('enabled', False) else 0,
+            email_config.get('smtp_server', ''),
+            email_config.get('smtp_port', 587),
+            1 if email_config.get('use_tls', True) else 0,
+            email_config.get('username', ''),
+            email_config.get('password', ''),
+            email_config.get('from_address', ''),
+            ','.join(email_config.get('recipients', [])),
+            datetime.now()
+        ))
 
     conn.commit()
     conn.close()
@@ -381,18 +449,35 @@ def save_wechat_notification_config(wechat_config):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        UPDATE wechat_notification_config
-        SET enabled=?, corp_id=?, corp_secret=?, agent_id=?, to_users=?, updated_at=?
-        WHERE id=1
-    ''', (
-        1 if wechat_config.get('enabled', False) else 0,
-        wechat_config.get('corp_id', ''),
-        wechat_config.get('corp_secret', ''),
-        wechat_config.get('agent_id', ''),
-        wechat_config.get('to_users', '@all'),
-        datetime.now()
-    ))
+    # 确保存在至少一条记录，然后更新它
+    cursor.execute('SELECT COUNT(*) as count FROM wechat_notification_config')
+    if cursor.fetchone()['count'] == 0:
+        # 如果没有记录，插入一条
+        cursor.execute('''
+            INSERT INTO wechat_notification_config
+            (enabled, corp_id, corp_secret, agent_id, to_users)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            1 if wechat_config.get('enabled', False) else 0,
+            wechat_config.get('corp_id', ''),
+            wechat_config.get('corp_secret', ''),
+            wechat_config.get('agent_id', ''),
+            wechat_config.get('to_users', '@all')
+        ))
+    else:
+        # 如果有记录，更新第一条
+        cursor.execute('''
+            UPDATE wechat_notification_config
+            SET enabled=?, corp_id=?, corp_secret=?, agent_id=?, to_users=?, updated_at=?
+            WHERE id=1
+        ''', (
+            1 if wechat_config.get('enabled', False) else 0,
+            wechat_config.get('corp_id', ''),
+            wechat_config.get('corp_secret', ''),
+            wechat_config.get('agent_id', ''),
+            wechat_config.get('to_users', '@all'),
+            datetime.now()
+        ))
 
     conn.commit()
     conn.close()

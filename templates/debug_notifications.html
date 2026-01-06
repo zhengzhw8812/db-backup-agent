@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通知调试 - 数据库备份管理器</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        h2 { color: #666; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .data { background: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #007bff; }
+        .true { color: #28a745; font-weight: bold; }
+        .false { color: #dc3545; font-weight: bold; }
+        .code { background: #e9ecef; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 通知配置调试页面</h1>
+
+    <div class="section">
+        <h2>1. 数据库原始值</h2>
+        <div class="data">
+            <strong>enabled:</strong> <span class="{% if db_raw.enabled %}true{% else %}false{% endif %}">{{ db_raw.enabled }}</span> (type: {{ db_raw.enabled_type }})<br>
+            <strong>on_success:</strong> <span class="{% if db_raw.on_success %}true{% else %}false{% endif %}">{{ db_raw.on_success }}</span><br>
+            <strong>on_failure:</strong> <span class="{% if db_raw.on_failure %}true{% else %}false{% endif %}">{{ db_raw.on_failure }}</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>2. get_notification_config() 返回值</h2>
+        <div class="data">
+            <strong>enabled:</strong> <span class="{% if config.enabled %}true{% else %}false{% endif %}">{{ config.enabled }}</span> (type: {{ config.enabled_type }})<br>
+            <strong>on_success:</strong> <span class="{% if config.on_success %}true{% else %}false{% endif %}">{{ config.on_success }}</span><br>
+            <strong>on_failure:</strong> <span class="{% if config.on_failure %}true{% else %}false{% endif %}">{{ config.on_failure }}</span><br>
+            <strong>email.enabled:</strong> <span class="{% if config.email.enabled %}true{% else %}false{% endif %}">{{ config.email.enabled }}</span><br>
+            <strong>wechat.enabled:</strong> <span class="{% if config.wechat.enabled %}true{% else %}false{% endif %}">{{ config.wechat.enabled }}</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>3. Jinja2 模板条件结果</h2>
+        <div class="data">
+            <code>{% if notifications.enabled %}</code><br>
+            实际值: <strong>{{ config.enabled }}</strong><br>
+            条件结果: <span class="{% if config.enabled %}true{% else %}false{% endif %}">{{ config.enabled }}</span><br>
+            <br>
+            <strong>HTML 会输出:</strong><br>
+            <div class="code">
+&lt;input type="checkbox" name="enabled" id="enabled"{% if config.enabled %} checked{% endif %}&gt;
+            </div>
+            <br>
+            <strong>预期显示:</strong> <span class="{% if config.enabled %}true{% else %}false{% endif %}">
+                {% if config.enabled %}开关为蓝色（开启）{% else %}开关为灰色（关闭）{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>4. HTML 生成的 checkbox 代码</h2>
+        <div class="code">
+&lt;input type="checkbox" name="enabled" id="enabled"{% if config.enabled %} checked{% endif %}&gt;<br><br>
+&lt;input type="checkbox" name="email_enabled" id="email_enabled"{% if config.email.enabled %} checked{% endif %}&gt;<br><br>
+&lt;input type="checkbox" name="wechat_enabled" id="wechat_enabled"{% if config.wechat.enabled %} checked{% endif %}&gt;
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>5. 测试操作</h2>
+        <div class="data">
+            <p>打开浏览器开发者工具 (F12)，查看以下内容：</p>
+            <ul>
+                <li>Network 标签: 查看 /notifications 请求的响应</li>
+                <li>Elements 标签: 查看 checkbox 元素是否有 checked 属性</li>
+                <li>Console 标签: 查看是否有 JavaScript 错误</li>
+            </ul>
+            <p><strong>如果没有 checked 属性，开关应该是灰色的（关闭状态）</strong></p>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="{{ url_for('notifications') }}" style="padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">返回通知设置</a>
+    </div>
+</body>
+</html>

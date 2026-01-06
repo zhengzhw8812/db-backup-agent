@@ -2,28 +2,33 @@ version: '3.8'
 
 services:
   db-backup:
-    # 使用本地测试镜像
+    # 构建配置
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # 镜像名称和标签
     image: tony5188/db-backup-agent:test
 
     # 容器的名称
     container_name: db-backup-test
-    
+
     # 确保容器在退出后总是会自动重启
     restart: always
-    
+
     # 将主机的 5001 端口映射到容器的 5001 端口，以便访问 Web UI
     ports:
       - "5001:5001"
-      
+
     # 数据卷挂载
     volumes:
       # 将本地的 ./backups 目录挂载到容器的 /backups 目录
       # 这用于持久化存储备份文件和 users.db 数据库（包含所有配置）
       - ./backups:/backups
-      
+
       # 同步主机时区，确保备份文件的时间戳正确
       - /etc/localtime:/etc/localtime:ro
-      
+
     # 环境变量，用于设置容器内的时区
     environment:
       - TZ=Asia/Shanghai

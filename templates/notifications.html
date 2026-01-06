@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>通知设置 - 数据库备份管理器</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
@@ -281,8 +284,23 @@
         }
 
         .config-disabled {
-            opacity: 0.6;
+            /* 移除整体 opacity，改为对单独元素设置 */
+        }
+
+        .config-disabled input,
+        .config-disabled textarea {
             pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .config-disabled button[type="button"] {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .config-disabled button[type="submit"] {
+            pointer-events: auto !important;
+            opacity: 1 !important;
         }
     </style>
 </head>
@@ -492,6 +510,31 @@
     </div>
 
     <script>
+        // 页面加载时初始化配置区域显示状态
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化邮件配置区域
+            const emailEnabled = document.getElementById('email_enabled');
+            const emailConfig = document.getElementById('email-config');
+            if (emailEnabled && emailConfig) {
+                if (emailEnabled.checked) {
+                    emailConfig.classList.remove('config-disabled');
+                } else {
+                    emailConfig.classList.add('config-disabled');
+                }
+            }
+
+            // 初始化企业微信配置区域
+            const wechatEnabled = document.getElementById('wechat_enabled');
+            const wechatConfig = document.getElementById('wechat-config');
+            if (wechatEnabled && wechatConfig) {
+                if (wechatEnabled.checked) {
+                    wechatConfig.classList.remove('config-disabled');
+                } else {
+                    wechatConfig.classList.add('config-disabled');
+                }
+            }
+        });
+
         // 切换配置区域显示/隐藏
         document.getElementById('email_enabled').addEventListener('change', function() {
             const config = document.getElementById('email-config');

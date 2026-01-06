@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory, flash, make_response
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 import sys
 import json
@@ -79,6 +79,10 @@ init_db()
 sys.path.insert(0, BASE_DIR)
 from config_manager import init_config_tables
 init_config_tables()
+
+# 初始化备份锁表
+from backup_lock import init_backup_lock_table
+init_backup_lock_table()
 
 # --- 辅助函数 ---
 
@@ -450,6 +454,33 @@ def backup_now(db_type):
     task_status = '未启动 (未配置)'
 
     try:
+        # 检查备份锁
+        sys.path.insert(0, BASE_DIR)
+        from backup_lock import is_backup_locked
+
+        if is_backup_locked(db_type):
+            lock_info = None
+            try:
+                from backup_lock import get_backup_lock_info
+                lock_info = get_backup_lock_info(db_type)
+            except:
+                pass
+
+            if lock_info and lock_info.get('locked_at'):
+                locked_time = lock_info['locked_at']
+                if isinstance(locked_time, str):
+                    locked_time = locked_time.split('.')[0]  # 去掉微秒
+                return jsonify({
+                    'status': 'error',
+                    'message': f'{db_type} 备份任务正在运行中，请等待完成后再试',
+                    'locked_at': locked_time
+                }), 409  # 409 Conflict
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'{db_type} 备份任务正在运行中，请等待完成后再试'
+                }), 409
+
         if db_type == 'postgresql' and config.get('postgresql') and len(config.get('postgresql', [])) > 0:
             # 使用 shell 在后台运行
             subprocess.Popen(
@@ -478,6 +509,33 @@ def backup_single(db_type, db_id):
     task_status = '未启动 (未配置)'
 
     try:
+        # 检查备份锁
+        sys.path.insert(0, BASE_DIR)
+        from backup_lock import is_backup_locked
+
+        if is_backup_locked(db_type):
+            lock_info = None
+            try:
+                from backup_lock import get_backup_lock_info
+                lock_info = get_backup_lock_info(db_type)
+            except:
+                pass
+
+            if lock_info and lock_info.get('locked_at'):
+                locked_time = lock_info['locked_at']
+                if isinstance(locked_time, str):
+                    locked_time = locked_time.split('.')[0]  # 去掉微秒
+                return jsonify({
+                    'status': 'error',
+                    'message': f'{db_type} 备份任务正在运行中，请等待完成后再试',
+                    'locked_at': locked_time
+                }), 409
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'{db_type} 备份任务正在运行中，请等待完成后再试'
+                }), 409
+
         if db_type == 'postgresql':
             # 检查是否配置了该数据库
             if config.get('postgresql'):
@@ -632,7 +690,41 @@ def notifications():
     """通知配置页面"""
     config = load_config()
     notifications_config = config.get('notifications', {})
-    return render_template('notifications.html', notifications=notifications_config)
+
+    # DEBUG: 记录实际传递给模板的值
+    app.logger.info(f"DEBUG notifications route: enabled={notifications_config.get('enabled')}, type={type(notifications_config.get('enabled'))}")
+    app.logger.info(f"DEBUG notifications route: on_success={notifications_config.get('on_success')}, on_failure={notifications_config.get('on_failure')}")
+
+    # 禁用浏览器缓存
+    response = make_response(render_template('notifications.html', notifications=notifications_config))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+
+    return response
+
+
+@app.route('/notifications/debug')
+@login_required
+def debug_notifications():
+    """通知配置调试页面"""
+    sys.path.insert(0, BASE_DIR)
+    from config_manager import get_notification_config, get_db_connection
+
+    # 获取数据库原始值
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, enabled, on_success, on_failure FROM notification_config ORDER BY id DESC LIMIT 1')
+    row = cursor.fetchone()
+    db_raw = dict(row) if row else {'enabled': 0, 'on_success': 0, 'on_failure': 0, 'enabled_type': 'int'}
+    db_raw['enabled_type'] = type(db_raw['enabled']).__name__
+    conn.close()
+
+    # 获取配置
+    config = get_notification_config()
+    config['enabled_type'] = type(config['enabled']).__name__
+
+    return render_template('debug_notifications.html', db_raw=db_raw, config=config)
 
 @app.route('/changelog')
 @login_required
@@ -659,6 +751,11 @@ def save_global_notification():
         on_success = request.form.get('on_success') is not None
         on_failure = request.form.get('on_failure') is not None
 
+        # DEBUG: 记录接收到的表单数据
+        app.logger.info(f"DEBUG save_global_notification: form.keys() = {list(request.form.keys())}")
+        app.logger.info(f"DEBUG save_global_notification: enabled={enabled}, on_success={on_success}, on_failure={on_failure}")
+        app.logger.info(f"DEBUG save_global_notification: request.form.get('enabled') = {request.form.get('enabled')}")
+
         # 保存到数据库
         save_global_notification_config(enabled, on_success, on_failure)
 
@@ -666,6 +763,7 @@ def save_global_notification():
         return redirect(url_for('notifications'))
 
     except Exception as e:
+        app.logger.error(f"ERROR save_global_notification: {str(e)}")
         flash(f'保存配置失败: {str(e)}', 'danger')
         return redirect(url_for('notifications'))
 
