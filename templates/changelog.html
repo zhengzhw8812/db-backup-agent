@@ -169,7 +169,67 @@
 
         <div class="version-card">
             <div class="version-header">
-                <div class="version-number">v2.2.0 <span class="badge badge-new">Latest</span></div>
+                <div class="version-number">v2.3.0 <span class="badge badge-new">Latest</span></div>
+                <div class="version-date">2026-01-06</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 新功能</div>
+                <ul class="change-list">
+                    <li class="change-item feature">并发备份控制，添加智能备份锁机制，防止同一类型的数据库同时执行多个备份任务</li>
+                    <li class="change-item feature">智能锁管理，基于数据库的持久化锁，支持自动过期（2小时）和崩溃恢复</li>
+                    <li class="change-item feature">通知页面优化，改进通知设置页面的交互体验和视觉反馈</li>
+                    <li class="change-item feature">调试支持，新增通知调试页面（/notifications/debug），方便排查通知配置问题</li>
+                    <li class="change-item feature">锁状态查询，支持通过命令行查看当前备份锁状态</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">⚡ 优化改进</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">优化通知设置页面的 JavaScript 初始化逻辑，页面加载时正确显示配置状态</li>
+                    <li class="change-item improvement">改进禁用状态的视觉反馈，输入框和测试按钮半透明，保存按钮保持正常颜色</li>
+                    <li class="change-item improvement">添加多层浏览器缓存控制（HTML meta 标签 + HTTP 响应头），确保配置状态实时同步</li>
+                    <li class="change-item improvement">备份锁支持内存缓存和数据库双重存储，提高性能和可靠性</li>
+                    <li class="change-item improvement">锁自动过期机制，防止异常情况下锁无法释放导致备份阻塞</li>
+                    <li class="change-item improvement">崩溃恢复支持，容器重启后自动检测并清理过期的锁</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🐛 问题修复</div>
+                <ul class="change-list">
+                    <li class="change-item fix">修复通知开关刷新后状态显示不正确的问题</li>
+                    <li class="change-item fix">修复关闭通知后保存按钮无法点击的问题</li>
+                    <li class="change-item fix">修复邮件/企业微信配置区域在禁用状态下的样式显示问题</li>
+                    <li class="change-item fix">修复并发备份可能导致的资源冲突和数据不一致问题</li>
+                    <li class="change-item fix">修复浏览器缓存导致的配置状态不同步问题</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">📦 技术更新</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">新增 backup_lock.py 模块，实现分布式锁机制</li>
+                    <li class="change-item improvement">备份脚本集成锁获取和释放逻辑</li>
+                    <li class="change-item improvement">Web 界面添加备份锁检查，防止重复提交备份任务</li>
+                    <li class="change-item improvement">优化 CSS 样式，精确控制禁用状态下各个元素的显示效果</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">📚 文档更新</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">新增 BROWSER_CACHE_SOLUTION.md 浏览器缓存问题解决方案文档</li>
+                    <li class="change-item improvement">新增 DOCKER_COMPOSE_GUIDE.md Docker Compose 使用指南</li>
+                    <li class="change-item improvement">新增 CACHE_FIX_GUIDE.md 缓存修复技术说明文档</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v2.2.0</div>
                 <div class="version-date">2026-01-05</div>
             </div>
 
