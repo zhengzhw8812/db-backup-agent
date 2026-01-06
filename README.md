@@ -16,6 +16,7 @@
 - **便捷的故障排查** - 失败任务提供详细错误日志，快速定位问题根源
 - **多平台兼容** - 支持 **x86_64 (amd64)** 和 **ARM64** 架构（如 Apple Silicon、树莓派）
 - **🔔 消息通知** - 支持邮件和企业微信通知，备份结果自动推送
+- **🔒 并发控制** - 智能备份锁机制，防止并发备份冲突，保护数据完整性
 
 ### 📢 通知功能
 
@@ -176,6 +177,31 @@ docker-compose up -d
 
 ## 📋 更新日志
 
+### v2.3.0 (2026-01-06)
+
+#### ✨ 新功能
+- **并发备份控制** - 添加备份锁机制，防止同一类型的数据库同时执行多个备份任务
+- **智能锁管理** - 基于数据库的持久化锁，支持自动过期（2小时）和崩溃恢复
+- **通知页面优化** - 改进通知设置页面的交互体验和视觉反馈
+- **调试支持** - 新增通知调试页面，方便排查通知配置问题
+
+#### ⚡ 优化改进
+- 优化通知设置页面的 JavaScript 初始化逻辑，页面加载时正确显示配置状态
+- 改进禁用状态的视觉反馈，输入框和测试按钮半透明，保存按钮保持正常颜色
+- 添加多层浏览器缓存控制，确保配置状态实时同步
+- 备份锁支持内存缓存和数据库双重存储，提高性能和可靠性
+
+#### 🐛 问题修复
+- 修复通知开关刷新后状态显示不正确的问题
+- 修复关闭通知后保存按钮无法点击的问题
+- 修复邮件/企业微信配置区域在禁用状态下的样式显示问题
+- 修复并发备份可能导致的资源冲突和数据不一致问题
+
+#### 📚 文档更新
+- 新增浏览器缓存问题解决方案文档
+- 新增 Docker Compose 使用指南
+- 新增缓存修复技术说明文档
+
 ### v2.2.0 (2026-01-05)
 
 #### ✨ 新功能
@@ -270,6 +296,7 @@ A lightweight, easy-to-deploy database backup management tool that provides auto
 - **Easy Troubleshooting** - Failed tasks provide detailed error logs for quick problem diagnosis
 - **Multi-Platform Support** - Supports **x86_64 (amd64)** and **ARM64** architectures (e.g., Apple Silicon, Raspberry Pi)
 - **🔔 Notification Support** - Email and WeChat Work notifications for automatic backup status updates
+- **🔒 Concurrent Control** - Smart backup lock mechanism prevents concurrent backup conflicts and protects data integrity
 
 ### 📢 Notification Features
 
@@ -425,6 +452,31 @@ The script automatically completes the following steps:
 This project is open-sourced under the [MIT License](LICENSE).
 
 ## 📋 Changelog
+
+### v2.3.0 (2026-01-06)
+
+#### ✨ New Features
+- **Concurrent Backup Control** - Added backup lock mechanism to prevent multiple backup tasks of the same database type from running simultaneously
+- **Smart Lock Management** - Persistent database-based locks with automatic expiration (2 hours) and crash recovery
+- **Notification Page Optimization** - Improved interaction experience and visual feedback on notification settings page
+- **Debug Support** - Added notification debug page for easier troubleshooting of notification configuration issues
+
+#### ⚡ Improvements
+- Optimized JavaScript initialization logic for notification settings page, correctly displays configuration state on page load
+- Improved visual feedback for disabled state, input fields and test buttons are semi-transparent while save buttons remain normal color
+- Added multi-layer browser cache control to ensure real-time synchronization of configuration state
+- Backup lock supports dual storage with memory cache and database for better performance and reliability
+
+#### 🐛 Bug Fixes
+- Fixed incorrect notification toggle state display after page refresh
+- Fixed inability to click save button when notifications are disabled
+- Fixed style display issues for email/WeChat configuration areas in disabled state
+- Fixed resource conflicts and data inconsistencies caused by concurrent backups
+
+#### 📚 Documentation Updates
+- Added browser cache issue solution documentation
+- Added Docker Compose usage guide
+- Added cache fix technical documentation
 
 ### v2.2.0 (2026-01-05)
 
