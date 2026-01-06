@@ -63,6 +63,7 @@ COPY app.py /app.py
 COPY db_init.py /db_init.py
 COPY migrate_db.py /migrate_db.py
 COPY config_manager.py /config_manager.py
+COPY backup_lock.py /backup_lock.py
 COPY backup_logger.py /app/backup_logger.py
 COPY system_logger.py /app/system_logger.py
 COPY notifications.py /app/notifications.py

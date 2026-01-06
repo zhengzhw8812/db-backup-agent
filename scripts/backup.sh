@@ -297,6 +297,24 @@ main() {
     # 第三个参数是单个数据库ID（可选）
     local db_id=${3:-}
 
+    # 确定备份锁标识（手动备份用 'manual'，自动备份用 'auto'）
+    local lock_id="manual"
+    if [ "$trigger_type" == "自动" ]; then
+        lock_id="auto"
+    fi
+
+    # 尝试获取备份锁
+    if ! python3 /backup_lock.py acquire --db_type "$DB_TYPE_TO_BACKUP" --lock_id "$lock_id" 2>/dev/null; then
+        echo "[$(date)] 无法获取 $DB_TYPE_TO_BACKUP 备份锁，可能已有备份任务在运行中"
+        log_system "warning" "backup" "$DB_TYPE_TO_BACKUP 备份任务被跳过（已有任务运行中）" "触发方式: $trigger_type"
+        exit 1
+    fi
+
+    echo "[$(date)] 成功获取 $DB_TYPE_TO_BACKUP 备份锁"
+
+    # 设置退出时自动释放锁的陷阱
+    trap 'release_backup_lock_and_exit' EXIT INT TERM
+
     # 根据传入的参数决定备份哪个数据库
     if [ -z "$DB_TYPE_TO_BACKUP" ] || [ "$DB_TYPE_TO_BACKUP" == "postgresql" ]; then
         backup_postgresql "$trigger_type" "$db_id"
@@ -312,6 +330,24 @@ main() {
     fi
 
     echo "[$(date)] 所有任务成功完成."
+}
+
+# 释放备份锁并退出
+release_backup_lock_and_exit() {
+    local exit_code=$?
+
+    # 释放备份锁
+    if python3 /backup_lock.py release --db_type "$DB_TYPE_TO_BACKUP" 2>/dev/null; then
+        echo "[$(date)] 已释放 $DB_TYPE_TO_BACKUP 备份锁"
+    else
+        echo "[$(date)] 释放 $DB_TYPE_TO_BACKUP 备份锁失败"
+    fi
+
+    # 恢复默认的退出行为
+    trap - EXIT INT TERM
+
+    # 以原始退出码退出
+    exit $exit_code
 }
 
 main "$@"
