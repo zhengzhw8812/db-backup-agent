@@ -22,6 +22,11 @@
   - GitHub 和 Gitee 同步配置说明
   - 多仓库管理最佳实践
 
+- **GITEE_PUSH_GUIDE.md** - Gitee 推送认证指南
+  - HTTPS 和 SSH 两种认证方式说明
+  - 凭据存储配置方法
+  - 常见问题解决方案
+
 ### 测试脚本
 
 - **test_notifications_flow.py** - 通知配置流程测试脚本
