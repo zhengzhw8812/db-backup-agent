@@ -6,9 +6,29 @@ set -e
 # --- 配置 ---
 CONFIG_MANAGER="/config_manager.py"
 SYSTEM_LOGGER="/app/system_logger.py"
-BACKUP_DIR="/backups"
+BACKUP_BASE_DIR="/backups"
 RETENTION_DAYS=7 # 默认备份保留天数
 DATE=$(date +%Y%m%d_%H%M%S)
+
+# 从第一个命令行参数读取要备份的数据库类型
+DB_TYPE_TO_BACKUP=$1
+# 从第二个命令行参数读取触发方式（手动/自动）
+TRIGGER_TYPE=${2:-自动}
+# 从第三个命令行参数读取单个数据库ID（可选）
+SINGLE_DB_ID=${3:-}
+# 从第四个命令行参数读取用户ID（用于多用户隔离）
+USER_ID=${4:-}
+
+# 设置用户专属的备份目录
+if [[ -n "$USER_ID" ]]; then
+    BACKUP_DIR="$BACKUP_BASE_DIR/user_$USER_ID"
+else
+    # 兼容旧版本，如果没有提供用户ID，使用默认目录
+    BACKUP_DIR="$BACKUP_BASE_DIR"
+fi
+
+# 确保用户备份目录存在
+mkdir -p "$BACKUP_DIR"
 
 # --- 系统日志函数 ---
 log_system() {
@@ -24,13 +44,6 @@ log_system() {
         --message "$message" \
         --details "$details" > /dev/null 2>&1 &
 }
-
-# 从第一个命令行参数读取要备份的数据库类型
-DB_TYPE_TO_BACKUP=$1
-# 从第二个命令行参数读取触发方式（手动/自动）
-TRIGGER_TYPE=${2:-自动}
-# 从第三个命令行参数读取单个数据库ID（可选）
-SINGLE_DB_ID=${3:-}
 
 # --- 日志记录函数 ---
 log_history() {
@@ -70,6 +83,12 @@ log_history() {
     fi
 
     # 记录到数据库（后台执行，输出到 /dev/null）
+    # 传递用户ID参数（如果存在）
+    local user_id_arg=""
+    if [[ -n "$USER_ID" ]]; then
+        user_id_arg="--user-id $USER_ID"
+    fi
+
     python3 /app/backup_logger.py log \
         --type "$db_type" \
         --name "$db_name" \
@@ -78,7 +97,8 @@ log_history() {
         --message "$message" \
         --file "$backup_file" \
         --size "$file_size" \
-        --log "$log_file" > /dev/null 2>&1 &
+        --log "$log_file" \
+        $user_id_arg > /dev/null 2>&1 &
 
 
     # 发送通知

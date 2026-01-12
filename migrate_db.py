@@ -182,11 +182,12 @@ def ensure_v22_tables():
             '''
         },
         'backup_history': {
-            'columns': ['id', 'db_type', 'db_name', 'trigger_type', 'status', 'message',
+            'columns': ['id', 'user_id', 'db_type', 'db_name', 'trigger_type', 'status', 'message',
                        'backup_file', 'file_size', 'duration', 'log_file', 'created_at'],
             'sql': '''
                 CREATE TABLE backup_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
                     db_type TEXT NOT NULL,
                     db_name TEXT,
                     trigger_type TEXT NOT NULL,
@@ -196,7 +197,8 @@ def ensure_v22_tables():
                     file_size INTEGER,
                     duration REAL,
                     log_file TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             '''
         },
@@ -229,11 +231,12 @@ def ensure_v22_tables():
             '''
         },
         'database_connections': {
-            'columns': ['id', 'db_type', 'host', 'port', 'user', 'password',
+            'columns': ['id', 'user_id', 'db_type', 'host', 'port', 'user', 'password',
                        'db_name', 'created_at', 'updated_at'],
             'sql': '''
                 CREATE TABLE database_connections (
                     id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
                     db_type TEXT NOT NULL,
                     host TEXT NOT NULL,
                     port TEXT NOT NULL,
@@ -241,22 +244,26 @@ def ensure_v22_tables():
                     password TEXT NOT NULL,
                     db_name TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             '''
         },
         'backup_schedules': {
-            'columns': ['db_type', 'schedule_type', 'cron_expression', 'retention_days',
+            'columns': ['id', 'user_id', 'db_type', 'schedule_type', 'cron_expression', 'retention_days',
                        'enabled', 'created_at', 'updated_at'],
             'sql': '''
                 CREATE TABLE backup_schedules (
-                    db_type TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    db_type TEXT NOT NULL,
                     schedule_type TEXT NOT NULL,
                     cron_expression TEXT,
                     retention_days INTEGER DEFAULT 7,
                     enabled BOOLEAN DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             '''
         },
@@ -304,11 +311,40 @@ def ensure_v22_tables():
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             '''
+        },
+        'password_reset_tokens': {
+            'columns': ['id', 'user_id', 'token', 'expires_at', 'used', 'created_at'],
+            'sql': '''
+                CREATE TABLE password_reset_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    used BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            '''
+        },
+        'user_otp_config': {
+            'columns': ['id', 'user_id', 'secret', 'is_enabled', 'created_at', 'updated_at'],
+            'sql': '''
+                CREATE TABLE user_otp_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    secret TEXT NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            '''
         }
     }
 
     # 定义所有必需的索引
     v22_indexes = [
+        ('idx_backup_user_id', 'backup_history', 'user_id'),
         ('idx_backup_db_type', 'backup_history', 'db_type'),
         ('idx_backup_status', 'backup_history', 'status'),
         ('idx_backup_created_at', 'backup_history', 'created_at'),
@@ -316,6 +352,12 @@ def ensure_v22_tables():
         ('idx_system_logs_type', 'system_logs', 'log_type'),
         ('idx_system_logs_category', 'system_logs', 'category'),
         ('idx_system_logs_created_at', 'system_logs', 'created_at'),
+        ('idx_db_connections_user_id', 'database_connections', 'user_id'),
+        ('idx_schedules_user_id', 'backup_schedules', 'user_id'),
+        ('idx_reset_tokens_token', 'password_reset_tokens', 'token'),
+        ('idx_reset_tokens_user_id', 'password_reset_tokens', 'user_id'),
+        ('idx_reset_tokens_expires_at', 'password_reset_tokens', 'expires_at'),
+        ('idx_user_otp_user_id', 'user_otp_config', 'user_id'),
     ]
 
     def check_table_structure(conn, table_name, expected_columns):

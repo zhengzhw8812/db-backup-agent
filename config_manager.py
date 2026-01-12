@@ -124,16 +124,26 @@ def init_config_tables():
 
 # ===== 数据库连接管理 =====
 
-def add_database_connection(db_type, host, port, user, password, db_name):
-    """添加数据库连接"""
+def add_database_connection(user_id, db_type, host, port, user, password, db_name):
+    """添加数据库连接
+
+    Args:
+        user_id: 用户 ID
+        db_type: 数据库类型
+        host: 主机地址
+        port: 端口
+        user: 数据库用户名
+        password: 数据库密码
+        db_name: 数据库名称
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     conn_id = str(uuid.uuid4())
     cursor.execute('''
-        INSERT INTO database_connections (id, db_type, host, port, user, password, db_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (conn_id, db_type, host, port, user, password, db_name))
+        INSERT INTO database_connections (id, user_id, db_type, host, port, user, password, db_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (conn_id, user_id, db_type, host, port, user, password, db_name))
 
     conn.commit()
     conn.close()
@@ -166,12 +176,21 @@ def delete_database_connection(conn_id):
     conn.close()
 
 
-def get_database_connections(db_type=None):
-    """获取数据库连接列表"""
+def get_database_connections(user_id=None, db_type=None):
+    """获取数据库连接列表
+
+    Args:
+        user_id: 用户 ID（用于多用户隔离）
+        db_type: 数据库类型（可选）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    if db_type:
+    if user_id is not None and db_type:
+        cursor.execute('SELECT * FROM database_connections WHERE user_id=? AND db_type=? ORDER BY created_at DESC', (user_id, db_type))
+    elif user_id is not None:
+        cursor.execute('SELECT * FROM database_connections WHERE user_id=? ORDER BY created_at DESC', (user_id,))
+    elif db_type:
         cursor.execute('SELECT * FROM database_connections WHERE db_type=? ORDER BY created_at DESC', (db_type,))
     else:
         cursor.execute('SELECT * FROM database_connections ORDER BY created_at DESC')
@@ -198,39 +217,72 @@ def get_database_connection(conn_id):
 
 # ===== 备份计划管理 =====
 
-def save_backup_schedule(db_type, schedule_type, cron_expression, retention_days):
-    """保存备份计划"""
+def save_backup_schedule(user_id, db_type, schedule_type, cron_expression, retention_days):
+    """保存备份计划
+
+    Args:
+        user_id: 用户 ID
+        db_type: 数据库类型
+        schedule_type: 计划类型
+        cron_expression: Cron 表达式
+        retention_days: 保留天数
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        INSERT OR REPLACE INTO backup_schedules
-        (db_type, schedule_type, cron_expression, retention_days, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (db_type, schedule_type, cron_expression, retention_days, datetime.now()))
+    # 检查是否已存在该用户的该类型计划
+    cursor.execute('SELECT id FROM backup_schedules WHERE user_id=? AND db_type=?', (user_id, db_type))
+    existing = cursor.fetchone()
+
+    if existing:
+        # 更新现有计划
+        cursor.execute('''
+            UPDATE backup_schedules
+            SET schedule_type=?, cron_expression=?, retention_days=?, updated_at=?
+            WHERE user_id=? AND db_type=?
+        ''', (schedule_type, cron_expression, retention_days, datetime.now(), user_id, db_type))
+    else:
+        # 插入新计划
+        cursor.execute('''
+            INSERT INTO backup_schedules
+            (user_id, db_type, schedule_type, cron_expression, retention_days, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, db_type, schedule_type, cron_expression, retention_days, datetime.now()))
 
     conn.commit()
     conn.close()
 
 
-def get_backup_schedules():
-    """获取所有备份计划"""
+def get_backup_schedules(user_id=None):
+    """获取所有备份计划
+
+    Args:
+        user_id: 用户 ID（用于多用户隔离）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM backup_schedules')
+    if user_id is not None:
+        cursor.execute('SELECT * FROM backup_schedules WHERE user_id=?', (user_id,))
+    else:
+        cursor.execute('SELECT * FROM backup_schedules')
     rows = cursor.fetchall()
     conn.close()
 
-    return {row['db_type']: dict(row) for row in rows}
+    return {f"{row['user_id']}_{row['db_type']}": dict(row) for row in rows}
 
 
-def get_backup_schedule(db_type):
-    """获取指定数据库类型的备份计划"""
+def get_backup_schedule(user_id, db_type):
+    """获取指定用户的指定数据库类型的备份计划
+
+    Args:
+        user_id: 用户 ID
+        db_type: 数据库类型
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM backup_schedules WHERE db_type=?', (db_type,))
+    cursor.execute('SELECT * FROM backup_schedules WHERE user_id=? AND db_type=?', (user_id, db_type))
     row = cursor.fetchone()
     conn.close()
 
@@ -483,13 +535,17 @@ def save_wechat_notification_config(wechat_config):
     conn.close()
 
 
-def get_all_config():
-    """获取所有配置（用于备份脚本）"""
+def get_all_config(user_id=None):
+    """获取所有配置（用于备份脚本）
+
+    Args:
+        user_id: 用户 ID（用于多用户隔离）
+    """
     return {
-        'postgresql': [dict(row) for row in get_database_connections('postgresql')],
-        'mysql': [dict(row) for row in get_database_connections('mysql')],
-        'schedules': {k: v['cron_expression'] for k, v in get_backup_schedules().items() if v},
-        'retention_days': {k: v['retention_days'] for k, v in get_backup_schedules().items()},
+        'postgresql': [dict(row) for row in get_database_connections(user_id, 'postgresql')],
+        'mysql': [dict(row) for row in get_database_connections(user_id, 'mysql')],
+        'schedules': {k: v['cron_expression'] for k, v in get_backup_schedules(user_id).items() if v},
+        'retention_days': {k: v['retention_days'] for k, v in get_backup_schedules(user_id).items()},
         'notifications': get_notification_config()
     }
 

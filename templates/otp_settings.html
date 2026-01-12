@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>两步验证设置 - 数据库备份管理器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .page-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-sm);
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+        }
+
+        .status-indicator.enabled {
+            background: var(--success-light);
+            border: 1px solid rgba(82, 196, 26, 0.2);
+        }
+
+        .status-indicator.disabled {
+            background: var(--warning-light);
+            border: 1px solid rgba(250, 173, 20, 0.2);
+        }
+
+        .status-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-right: 16px;
+        }
+
+        .status-indicator.enabled .status-icon {
+            background: rgba(82, 196, 26, 0.2);
+        }
+
+        .status-indicator.disabled .status-icon {
+            background: rgba(250, 173, 20, 0.2);
+        }
+
+        .status-content h3 {
+            margin: 0 0 4px 0;
+            font-size: 18px;
+            color: var(--text-primary);
+        }
+
+        .status-content p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: var(--info-light);
+            border: 1px solid var(--primary-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .info-box h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .info-box p {
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .warning-box {
+            background: var(--warning-light);
+            border: 1px solid var(--warning-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .warning-box h3 {
+            color: var(--warning-dark);
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .warning-box p {
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(91, 155, 213, 0.1);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 14px 24px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), #6BAEE6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-hover), #5B9BD5);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #5cb85c;
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #d9364f;
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card);
+            border-color: var(--primary-color);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .alert-danger {
+            background: var(--danger-light);
+            color: var(--danger-dark);
+            border: 1px solid rgba(255, 77, 79, 0.2);
+        }
+
+        .alert-success {
+            background: var(--success-light);
+            color: var(--success-dark);
+            border: 1px solid rgba(82, 196, 26, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">数据库备份管理器</h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
+                <a href="{{ url_for('index') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">返回主页</a>
+                <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>🔐 两步验证设置</h1>
+            <p>管理您的两步验证配置</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            {% if otp_config and otp_config.is_enabled %}
+            <div class="status-indicator enabled">
+                <div class="status-icon">✓</div>
+                <div class="status-content">
+                    <h3>已启用</h3>
+                    <p>您的账户已启用两步验证保护</p>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <h3>两步验证已启用</h3>
+                <p>每次登录时，除了密码外，您还需要输入身份验证器应用中显示的 6 位验证码。</p>
+                <p>这为您的账户提供了额外的安全保护层。</p>
+            </div>
+
+            <form method="post" action="{{ url_for('otp_settings') }}">
+                <div class="form-group">
+                    <label for="password">输入密码以禁用两步验证</label>
+                    <input type="password" id="password" name="password" placeholder="请输入当前密码" required>
+                    <p style="color: var(--text-muted); font-size: 13px; margin-top: 8px;">禁用两步验证需要验证您的密码</p>
+                </div>
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-danger" name="action" value="disable">禁用两步验证</button>
+                    <button type="submit" class="btn btn-danger" name="action" value="delete">完全删除配置</button>
+                </div>
+            </form>
+
+            {% else %}
+            <div class="status-indicator disabled">
+                <div class="status-icon">✕</div>
+                <div class="status-content">
+                    <h3>未启用</h3>
+                    <p>您的账户未启用两步验证</p>
+                </div>
+            </div>
+
+            <div class="warning-box">
+                <h3>账户安全建议</h3>
+                <p>为了保护您的账户安全，强烈建议启用两步验证。</p>
+                <p>启用后，即使有人知道了您的密码，没有您的验证器也无法登录。</p>
+            </div>
+
+            <div class="btn-group">
+                <a href="{{ url_for('otp_setup') }}" class="btn btn-success">立即启用两步验证</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top: 0; margin-bottom: 16px; color: var(--text-primary);">关于两步验证</h3>
+            <p style="color: var(--text-secondary); line-height: 1.8;">
+                两步验证（2FA）使用 TOTP（基于时间的一次性密码）算法，与您的身份验证器应用同步生成每 30 秒更换一次的 6 位数字验证码。
+                这确保了每次登录都需要一个唯一的、有时效性的验证码，大大提高了账户安全性。
+            </p>
+
+            <h4 style="margin-top: 24px; margin-bottom: 12px; color: var(--text-primary);">推荐的身份验证器应用</h4>
+            <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 20px;">
+                <li><strong>Google Authenticator</strong> - Android / iOS</li>
+                <li><strong>Microsoft Authenticator</strong> - Android / iOS</li>
+                <li><strong>Authy</strong> - Android / iOS / Desktop</li>
+                <li><strong>1Password</strong> - 跨平台密码管理器</li>
+                <li><strong>LastPass Authenticator</strong> - Android / iOS</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -125,6 +125,10 @@
             content: "⚠️";
         }
 
+        .change-item.security::before {
+            content: "🔒";
+        }
+
         .badge {
             display: inline-block;
             padding: 2px 8px;
@@ -169,7 +173,73 @@
 
         <div class="version-card">
             <div class="version-header">
-                <div class="version-number">v2.3.0 <span class="badge badge-new">Latest</span></div>
+                <div class="version-number">v2.4.0 <span class="badge badge-new">Latest</span></div>
+                <div class="version-date">2026-01-12</div>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">✨ 新功能</div>
+                <ul class="change-list">
+                    <li class="change-item feature">多用户数据隔离，完整的多用户支持，每个用户的备份任务、配置和历史完全独立</li>
+                    <li class="change-item feature">用户注册功能，支持用户自主注册，注册成功后自动引导设置两步验证</li>
+                    <li class="change-item feature">两步验证（2FA），新增 TOTP 一次性密码认证功能，增强账户安全</li>
+                    <li class="change-item feature">OTP 设置向导，友好的二维码扫描和验证码输入界面</li>
+                    <li class="change-item feature">安全管理页面，统一的安全设置入口，支持启用/禁用两步验证</li>
+                    <li class="change-item feature">忘记密码功能，支持通过 OTP 验证重置密码，强制两步验证保障安全</li>
+                    <li class="change-item feature">智能登录流程，登录页面 OTP 输入框始终显示，支持可选填写</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">⚡ 优化改进</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">注册流程优化，注册成功后自动登录并引导到 OTP 设置页面</li>
+                    <li class="change-item improvement">登录页面优化，OTP 输入框始终显示，"如未设置可留空"提示</li>
+                    <li class="change-item improvement">密码重置流程，提供实时的密码强度指示器，根据用户 OTP 状态自动调整流程</li>
+                    <li class="change-item improvement">统一配色方案，采用统一的蓝色主题，界面更加专业美观</li>
+                    <li class="change-item improvement">主页导航优化，新增"🔐 安全设置"入口</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🔒 安全增强</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">数据库级隔离，所有业务表增加 user_id 外键，确保数据安全隔离</li>
+                    <li class="change-item improvement">文件系统隔离，备份文件按用户分目录存储（/backups/user_{user_id}/）</li>
+                    <li class="change-item improvement">TOTP 算法，使用标准 TOTP 算法（RFC 6238），每 30 秒生成新的 6 位验证码</li>
+                    <li class="change-item improvement">密钥安全存储，密钥使用 Base32 编码存储，安全可靠</li>
+                    <li class="change-item improvement">验证时间窗口，允许前后 1 个周期（30秒），避免时钟偏差问题</li>
+                    <li class="change-item improvement">密码确认机制，两步验证启用/禁用操作需要密码确认，防止误操作</li>
+                    <li class="change-item improvement">强制 OTP 认证，忘记密码必须通过 OTP 验证，未启用 OTP 的用户需联系管理员</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🗄️ 数据库变更</div>
+                <ul class="change-list">
+                    <li class="change-item improvement">新增 user_otp_config 表（OTP 配置表）</li>
+                    <li class="change-item improvement">backup_history 表新增 user_id 字段</li>
+                    <li class="change-item improvement">database_connections 表新增 user_id 字段</li>
+                    <li class="change-item improvement">backup_schedules 表新增 user_id 字段</li>
+                    <li class="change-item improvement">password_reset_tokens 表新增 user_id 字段</li>
+                    <li class="change-item improvement">为所有 user_id 字段创建索引，优化查询性能</li>
+                </ul>
+            </div>
+
+            <div class="version-section">
+                <div class="section-title">🎯 验证器应用支持</div>
+                <ul class="change-list">
+                    <li class="change-item feature">Google Authenticator (iOS/Android)</li>
+                    <li class="change-item feature">Microsoft Authenticator (iOS/Android)</li>
+                    <li class="change-item feature">Authy (iOS/Android/Desktop)</li>
+                    <li class="change-item feature">1Password, LastPass 等密码管理器的内置功能</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="version-card">
+            <div class="version-header">
+                <div class="version-number">v2.3.0</div>
                 <div class="version-date">2026-01-06</div>
             </div>
 

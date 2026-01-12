@@ -17,6 +17,8 @@
 - **多平台兼容** - 支持 **x86_64 (amd64)** 和 **ARM64** 架构（如 Apple Silicon、树莓派）
 - **🔔 消息通知** - 支持邮件和企业微信通知，备份结果自动推送
 - **🔒 并发控制** - 智能备份锁机制，防止并发备份冲突，保护数据完整性
+- **🔑 密码管理** - 支持忘记密码和邮件重置功能，安全的密码找回流程
+- **🔐 两步验证** - 支持 TOTP 一次性密码认证（2FA），使用 Google Authenticator 等应用增强账户安全
 
 ### 📢 通知功能
 
@@ -121,6 +123,34 @@ docker-compose up -d
 - 📋 **系统日志** - 实时查看系统运行状态
 - 🔔 **通知设置** - 配置邮件和企业微信通知
 - 📝 **更新日志** - 查看版本更新说明
+- 🔐 **安全设置** - 配置两步验证（2FA）和密码管理
+- 🔑 **密码管理** - 忘记密码时可通过邮件重置
+
+### 两步验证功能
+
+系统支持 TOTP（基于时间的一次性密码）两步验证：
+
+1. 在主页点击 **"🔐 安全设置"**
+2. 点击 **"立即启用两步验证"**
+3. 使用 Google Authenticator、Microsoft Authenticator 等应用扫描二维码
+4. 输入应用显示的 6 位验证码完成设置
+5. 下次登录时需要输入密码 + 验证码
+
+**支持的验证器应用**：
+- Google Authenticator (Android/iOS)
+- Microsoft Authenticator (Android/iOS)
+- Authy (Android/iOS/Desktop)
+- 1Password、LastPass 等密码管理器的内置功能
+
+### 忘记密码功能
+
+如果忘记密码，可以通过邮件重置：
+
+1. 在登录页面点击 **"忘记密码？"**
+2. 输入您的用户名
+3. 系统将发送重置链接到您的邮箱（需提前配置邮件通知）
+4. 点击邮件中的链接设置新密码
+5. 使用新密码登录
 
 ### 注册页面
 
@@ -176,6 +206,46 @@ docker-compose up -d
 本项目基于 [MIT License](LICENSE) 开源。
 
 ## 📋 更新日志
+
+### v2.4.0 (2026-01-12)
+
+#### ✨ 新功能
+- **多用户数据隔离** - 完整的多用户支持，每个用户的备份任务、配置和历史完全独立
+- **用户注册功能** - 支持用户自主注册，注册成功后自动引导设置两步验证
+- **两步验证（2FA）** - 新增 TOTP 一次性密码认证功能，增强账户安全
+- **OTP 设置向导** - 友好的二维码扫描和验证码输入界面
+- **安全管理页面** - 统一的安全设置入口，支持启用/禁用两步验证
+- **忘记密码功能** - 新增密码重置功能，支持通过 OTP 验证重置密码
+- **智能登录流程** - 登录页面 OTP 输入框始终显示，支持可选填写
+
+#### ⚡ 优化改进
+- **注册流程优化** - 注册成功后自动登录并引导到 OTP 设置页面
+- **登录页面优化** - OTP 输入框始终显示，"如未设置可留空"提示，详细的使用说明
+- **密码重置流程** - 提供实时的密码强度指示器，根据用户 OTP 状态自动调整流程
+- **统一配色方案** - 采用统一的蓝色主题，界面更加专业美观
+- **主页导航优化** - 新增"🔐 安全设置"入口
+
+#### 🔒 安全增强
+- **数据库级隔离** - 所有业务表增加 user_id 外键，确保数据安全隔离
+- **文件系统隔离** - 备份文件按用户分目录存储（/backups/user_{user_id}/）
+- **TOTP 算法** - 使用标准 TOTP 算法（RFC 6238），每 30 秒生成新的 6 位验证码
+- **密钥安全存储** - 密钥使用 Base32 编码存储，安全可靠
+- **验证时间窗口** - 允许前后 1 个周期（30秒），避免时钟偏差问题
+- **密码确认机制** - 两步验证启用/禁用操作需要密码确认，防止误操作
+
+#### 🗄️ 数据库变更
+- 新增 user_otp_config 表（OTP 配置表）
+- backup_history 表新增 user_id 字段
+- database_connections 表新增 user_id 字段
+- backup_schedules 表新增 user_id 字段
+- password_reset_tokens 表新增 user_id 字段
+- 为所有 user_id 字段创建索引，优化查询性能
+
+#### 🎯 验证器应用支持
+- Google Authenticator (iOS/Android)
+- Microsoft Authenticator (iOS/Android)
+- Authy (iOS/Android/Desktop)
+- 1Password, LastPass 等密码管理器的内置功能
 
 ### v2.3.0 (2026-01-06)
 
@@ -297,6 +367,8 @@ A lightweight, easy-to-deploy database backup management tool that provides auto
 - **Multi-Platform Support** - Supports **x86_64 (amd64)** and **ARM64** architectures (e.g., Apple Silicon, Raspberry Pi)
 - **🔔 Notification Support** - Email and WeChat Work notifications for automatic backup status updates
 - **🔒 Concurrent Control** - Smart backup lock mechanism prevents concurrent backup conflicts and protects data integrity
+- **🔑 Password Management** - Forgot password feature with secure email-based password reset
+- **🔐 Two-Factor Authentication** - TOTP-based 2FA support using Google Authenticator and other apps for enhanced account security
 
 ### 📢 Notification Features
 
@@ -401,6 +473,34 @@ After login, you can:
 - 📋 **System Logs** - View real-time system running status
 - 🔔 **Notification Settings** - Configure email and WeChat Work notifications
 - 📝 **Changelog** - View version update notes
+- 🔐 **Security Settings** - Configure two-factor authentication (2FA) and password management
+- 🔑 **Password Management** - Reset password via email if forgotten
+
+### Two-Factor Authentication (2FA)
+
+The system supports TOTP (Time-based One-Time Password) two-factor authentication:
+
+1. Click **"🔐 Security Settings"** on the homepage
+2. Click **"Enable Two-Factor Authentication"**
+3. Scan the QR code with Google Authenticator, Microsoft Authenticator, or similar apps
+4. Enter the 6-digit verification code from the app to complete setup
+5. Next time you log in, you'll need both password and verification code
+
+**Supported Authenticator Apps**:
+- Google Authenticator (Android/iOS)
+- Microsoft Authenticator (Android/iOS)
+- Authy (Android/iOS/Desktop)
+- Built-in features of 1Password, LastPass, and other password managers
+
+### Forgot Password Feature
+
+If you forget your password, you can reset it via email:
+
+1. Click **"Forgot Password?"** on the login page
+2. Enter your username
+3. System will send a reset link to your email (requires email notification configured)
+4. Click the link in the email to set a new password
+5. Login with your new password
 
 ### Registration Page
 
@@ -452,6 +552,48 @@ The script automatically completes the following steps:
 This project is open-sourced under the [MIT License](LICENSE).
 
 ## 📋 Changelog
+
+### v2.5.0 (2026-01-12)
+
+#### ✨ New Features
+- **Two-Factor Authentication (2FA)** - Added TOTP-based one-time password authentication for enhanced account security
+- **OTP Setup Wizard** - User-friendly QR code scanning and verification code input interface
+- **Security Management Page** - Unified security settings entry point for enabling/disabling 2FA
+- **Authenticator App Support** - Compatible with Google Authenticator, Microsoft Authenticator, Authy, and other mainstream apps
+- **Smart Login Flow** - Automatically enables or skips two-step verification based on user configuration
+
+#### ⚡ Improvements
+- Added "🔐 Security Settings" entry point in main page navigation
+- Login page dynamically displays OTP verification code input field
+- Two-step verification requires confirmation before enabling, ensuring correct configuration
+- Security operations require password confirmation to prevent accidental changes
+
+#### 🔒 Security Enhancements
+- Uses standard TOTP algorithm (RFC 6238), generating new 6-digit codes every 30 seconds
+- Secret keys stored using Base32 encoding for security
+- Verification time window allows ±1 period (30 seconds) to avoid clock skew issues
+- Enabling/disabling 2FA requires password confirmation
+- Session intermediate state management ensures secure login flow
+
+### v2.4.0 (2026-01-12)
+
+#### ✨ New Features
+- **Password Reset** - Added forgot password feature with secure email-based password reset
+- **Secure Token Mechanism** - Uses cryptographically secure URL-safe tokens, valid for 1 hour
+- **Token Management** - Tokens automatically expire after use to prevent reuse
+- **Password Strength Indicator** - Real-time password strength indicator on reset page
+- **User-Friendly Interface** - New forgot password and password reset pages matching existing design
+
+#### ⚡ Improvements
+- Added "Forgot Password?" link on login page for quick access
+- Optimized password reset flow with clear status messages and error information
+- Integrated with existing email notification system, no additional configuration required
+
+#### 🔒 Security Enhancements
+- Uses `secrets.token_urlsafe(32)` for high-security reset tokens
+- Token expiration limited to 1 hour to minimize security risks
+- Prevents user enumeration attacks by showing same message for non-existent users
+- Automatically cleans up user's old unused tokens
 
 ### v2.3.0 (2026-01-06)
 
