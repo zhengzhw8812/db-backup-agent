@@ -16,6 +16,7 @@
             <div style="display: flex; align-items: center; gap: 16px;">
                 <a href="{{ url_for('changelog') }}" style="background: rgba(255, 255, 255, 0.15); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">📝 更新日志</a>
                 <a href="{{ url_for('notifications') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">🔔 通知设置</a>
+                <a href="{{ url_for('otp_settings') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">🔐 安全设置</a>
                 <span style="color: white; font-size: 14px;">你好, {{ current_user.username }}</span>
                 <a href="{{ url_for('logout') }}" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s ease; backdrop-filter: blur(10px);">登出</a>
             </div>

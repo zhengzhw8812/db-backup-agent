@@ -24,12 +24,13 @@ def get_db_connection():
     return conn
 
 
-def log_backup(db_type, db_name, trigger_type, status, message,
+def log_backup(user_id, db_type, db_name, trigger_type, status, message,
                backup_file=None, file_size=None, duration=None, log_file=None):
     """
     记录备份历史
 
     Args:
+        user_id: 用户 ID
         db_type: 数据库类型 (PostgreSQL/MySQL)
         db_name: 数据库名称
         trigger_type: 触发类型 (自动/手动)
@@ -49,9 +50,9 @@ def log_backup(db_type, db_name, trigger_type, status, message,
 
         cursor.execute('''
             INSERT INTO backup_history
-            (db_type, db_name, trigger_type, status, message, backup_file, file_size, duration, log_file)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (db_type, db_name, trigger_type, status, message, backup_file, file_size, duration, log_file))
+            (user_id, db_type, db_name, trigger_type, status, message, backup_file, file_size, duration, log_file)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, db_type, db_name, trigger_type, status, message, backup_file, file_size, duration, log_file))
 
         conn.commit()
         record_id = cursor.lastrowid
@@ -96,13 +97,14 @@ def log_notification(backup_history_id, notification_type, status, error_message
         return None
 
 
-def get_backup_history(limit=100, offset=0, db_type=None, status=None, start_date=None, end_date=None):
+def get_backup_history(limit=100, offset=0, user_id=None, db_type=None, status=None, start_date=None, end_date=None):
     """
     查询备份历史
 
     Args:
         limit: 返回记录数
         offset: 偏移量
+        user_id: 用户 ID（用于多用户隔离）
         db_type: 过滤数据库类型
         status: 过滤状态
         start_date: 开始日期
@@ -118,6 +120,10 @@ def get_backup_history(limit=100, offset=0, db_type=None, status=None, start_dat
         # 构建查询条件
         where_conditions = []
         params = []
+
+        if user_id is not None:
+            where_conditions.append("user_id = ?")
+            params.append(user_id)
 
         if db_type:
             where_conditions.append("db_type = ?")
@@ -217,17 +223,18 @@ def get_backup_statistics(days=7):
         return {}
 
 
-def get_recent_backups(limit=10):
+def get_recent_backups(limit=10, user_id=None):
     """
     获取最近的备份记录
 
     Args:
         limit: 返回记录数
+        user_id: 用户 ID（用于多用户隔离）
 
     Returns:
         list: 最近的备份记录
     """
-    return get_backup_history(limit=limit)
+    return get_backup_history(limit=limit, user_id=user_id)
 
 
 def clear_old_history(days=30):
@@ -275,6 +282,7 @@ def main():
     log_parser.add_argument('--size', type=int, help='文件大小（字节）')
     log_parser.add_argument('--duration', type=float, help='耗时（秒）')
     log_parser.add_argument('--log', help='详细日志文件路径')
+    log_parser.add_argument('--user-id', type=int, help='用户 ID（用于多用户隔离）')
 
     # 查询历史命令
     query_parser = subparsers.add_parser('query', help='查询备份历史')
@@ -296,6 +304,7 @@ def main():
     if args.command == 'log':
         # 记录备份
         record_id = log_backup(
+            user_id=getattr(args, 'user_id', None),
             db_type=args.type,
             db_name=args.name,
             trigger_type=args.trigger,
