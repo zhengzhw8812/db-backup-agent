@@ -60,6 +60,22 @@ chmod 0644 /var/log/cron.log
 echo "启动 cron 服务..."
 cron
 
-# 6. 启动 Flask 应用 (在前台运行，以便 Docker 日志可以捕获输出)
+# 6. 单用户模式：创建默认用户
+if [ "$SINGLE_USER_MODE" = "true" ]; then
+    echo "[单用户模式] 检查默认用户配置..."
+    if [ -n "$DEFAULT_USERNAME" ]; then
+        echo "[单用户模式] 默认用户名: $DEFAULT_USERNAME"
+        python3 -c "
+import sys
+sys.path.insert(0, '/')
+from app import create_default_user
+create_default_user()
+"
+    else
+        echo "[单用户模式] 未设置 DEFAULT_USERNAME，首次访问时需要手动创建管理员账号"
+    fi
+fi
+
+# 7. 启动 Flask 应用 (在前台运行，以便 Docker 日志可以捕获输出)
 echo "启动 Flask Web 服务器..."
 exec python3 /app.py
