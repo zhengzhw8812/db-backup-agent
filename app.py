@@ -19,7 +19,7 @@ import base64
 from migrate_db import ensure_v22_tables
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'  # 生产环境请更改此密钥
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 
 # 配置Flask-Login
 login_manager = LoginManager()
@@ -31,6 +31,16 @@ login_manager.login_message = '请先登录以访问此页面'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
 DB_FILE = os.path.join(BASE_DIR, 'backups', 'users.db')
+
+# --- 单用户模式配置 ---
+SINGLE_USER_MODE = os.environ.get('SINGLE_USER_MODE', 'false').lower() == 'true'
+DEFAULT_USERNAME = os.environ.get('DEFAULT_USERNAME', '')
+DEFAULT_PASSWORD = os.environ.get('DEFAULT_PASSWORD', '')
+
+if SINGLE_USER_MODE:
+    print(f"[配置] 单用户模式已启用")
+    if DEFAULT_USERNAME:
+        print(f"[配置] 默认用户名: {DEFAULT_USERNAME}")
 
 # --- 用户模型和认证 ---
 
@@ -62,6 +72,51 @@ def get_db_connection():
 def hash_password(password):
     """密码哈希"""
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def create_default_user():
+    """
+    单用户模式：创建默认管理员账号
+    仅在 SINGLE_USER_MODE=true 且数据库中没有用户时创建
+    """
+    if not SINGLE_USER_MODE:
+        return
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 检查是否已有用户
+        cursor.execute('SELECT COUNT(*) as count FROM users')
+        user_count = cursor.fetchone()['count']
+
+        if user_count > 0:
+            return
+
+        # 没有用户且配置了默认用户名
+        if DEFAULT_USERNAME:
+            password = DEFAULT_PASSWORD
+            if not password:
+                # 生成随机密码
+                password = secrets.token_hex(8)
+                print(f"[单用户模式] 警告: 未设置 DEFAULT_PASSWORD，已生成随机密码")
+                print(f"[单用户模式] 用户名: {DEFAULT_USERNAME}")
+                print(f"[单用户模式] 密码: {password}")
+                print(f"[单用户模式] 请在首次登录后立即修改密码！")
+
+            # 创建默认用户
+            cursor.execute(
+                'INSERT INTO users (username, password) VALUES (?, ?)',
+                (DEFAULT_USERNAME, hash_password(password))
+            )
+            conn.commit()
+            print(f"[单用户模式] 已创建默认用户: {DEFAULT_USERNAME}")
+
+    except Exception as e:
+        print(f"[单用户模式] 创建默认用户失败: {e}")
+    finally:
+        conn.close()
+
 
 def generate_reset_token():
     """生成安全的重置令牌"""
@@ -714,6 +769,18 @@ def register():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
 
+    # 单用户模式：如果已有用户，禁用注册
+    if SINGLE_USER_MODE:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM users')
+        user_count = cursor.fetchone()['count']
+        conn.close()
+
+        if user_count > 0:
+            flash('单用户模式已启用，请联系管理员', 'warning')
+            return redirect(url_for('login'))
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -731,6 +798,12 @@ def register():
         if len(password) < 6:
             flash('密码长度至少为6位', 'danger')
             return render_template('register.html')
+
+        # 单用户模式：限制用户名格式
+        if SINGLE_USER_MODE:
+            if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
+                flash('用户名只能包含字母、数字和下划线，长度3-20位', 'danger')
+                return render_template('register.html')
 
         # 检查用户名是否已存在
         conn = get_db_connection()
@@ -752,7 +825,11 @@ def register():
             # 注册成功后自动登录并跳转到 OTP 设置页面
             user_obj = User(user_id, username)
             login_user(user_obj)
-            flash('注册成功！为了保障账户安全，请设置两步验证', 'info')
+
+            if SINGLE_USER_MODE:
+                flash('管理员账号创建成功！为了保障账户安全，请设置两步验证', 'info')
+            else:
+                flash('注册成功！为了保障账户安全，请设置两步验证', 'info')
             return redirect(url_for('otp_setup'))
         except Exception as e:
             conn.close()
@@ -1936,6 +2013,15 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"⚠️  数据库完整性检查失败: {str(e)}")
         print("继续启动应用...")
+
+    # 单用户模式：创建默认用户
+    if SINGLE_USER_MODE:
+        print("[单用户模式] 检查默认用户...")
+        try:
+            create_default_user()
+        except Exception as e:
+            print(f"⚠️  创建默认用户失败: {str(e)}")
+
     print("=" * 60 + "\n")
 
     app.run(host='0.0.0.0', port=5001, debug=True)
