@@ -35,3 +35,4 @@ Thumbs.db
 
 # Archive directory (development files only)
 archive/
+.superpowers/
