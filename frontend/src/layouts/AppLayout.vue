@@ -13,6 +13,7 @@ const menuOptions = [
   { label: '数据库连接', key: 'connections' },
   { label: '备份计划', key: 'schedules' },
   { label: '备份', key: 'backups' },
+  { label: '备份历史', key: 'history' },
   // 3b 增加:备份 / 历史 / 日志 / 设置
 ]
 function onSelect(key: string) { router.push(`/${key}`) }

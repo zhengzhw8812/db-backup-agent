@@ -14,6 +14,7 @@ const router = createRouter({
         { path: 'connections', component: () => import('../views/Connections.vue') },
         { path: 'schedules', component: () => import('../views/Schedules.vue') },
         { path: 'backups', component: () => import('../views/Backups.vue') },
+        { path: 'history', component: () => import('../views/History.vue') },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
