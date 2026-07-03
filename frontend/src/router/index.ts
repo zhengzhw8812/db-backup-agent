@@ -15,6 +15,7 @@ const router = createRouter({
         { path: 'schedules', component: () => import('../views/Schedules.vue') },
         { path: 'backups', component: () => import('../views/Backups.vue') },
         { path: 'restore', component: () => import('../views/Restore.vue') },
+        { path: 'cloud', component: () => import('../views/CloudSync.vue') },
         { path: 'history', component: () => import('../views/History.vue') },
       ],
     },
