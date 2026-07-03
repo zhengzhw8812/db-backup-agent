@@ -9,6 +9,8 @@ from app.db import session as _session
 from app.services.backup_service import run_backup
 from app.services.restore_service import run_restore
 from app.services.sync_service import run_sync
+from app.services.retention import run_retention
+from app.services.notifications import notify_backup_result
 from app.workers.progress import ProgressReporter
 
 
@@ -22,6 +24,15 @@ def _run_backup_sync(ctx, connection_id: int, record_id: int) -> dict:
             raise ValueError(f"连接不存在: {connection_id}")
         reporter = ProgressReporter(record_id)
         rec = run_backup(db, crypto, conn, reporter, ctx["backup_dir"], record_id)
+        if rec.status == "success":
+            try:
+                run_retention(db, conn, ctx["backup_dir"])
+            except Exception:
+                pass  # 保留清理失败不影响备份结果
+        try:
+            notify_backup_result(db, crypto, conn, rec)
+        except Exception:
+            pass  # 通知失败不影响备份结果
         return {"record_id": rec.id, "status": rec.status}
     finally:
         db.close()

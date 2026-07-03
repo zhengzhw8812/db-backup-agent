@@ -41,3 +41,29 @@ def test_run_backup_sync_wires_service(monkeypatch, tmp_path):
     result = _run_backup_sync(ctx, conn_id, record_id)
     assert result["status"] == "success"
     assert result["record_id"] == record_id
+
+
+def test_backup_worker_runs_retention_and_notify(monkeypatch, tmp_path):
+    """worker 成功后应调用 retention 与 notify(monkeypatch 验证调用 + 现有断言不破)。"""
+    from app.workers.jobs import _run_backup_sync
+    key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setattr("app.workers.jobs.bootstrap_keys", lambda: ("secret", key))
+    monkeypatch.setattr("app.services.backup_service.get_adapter", lambda t: FakeAdapter())
+    monkeypatch.setattr("app.workers.jobs.ProgressReporter", lambda rid: FakeReporter())
+    calls = {}
+    monkeypatch.setattr("app.workers.jobs.run_retention", lambda db, conn, bdir: calls.setdefault("retention", True) or 0)
+    monkeypatch.setattr("app.workers.jobs.notify_backup_result", lambda *a: calls.setdefault("notify", True) or {"email": False, "wechat": False})
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    bdir = tmp_path / "backups"; bdir.mkdir()
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg", password_enc=Crypto(key.encode("ascii")).encrypt("pw"))
+    db.add(conn); db.commit(); db.refresh(conn)
+    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow())
+    db.add(record); db.commit(); db.refresh(record)
+    conn_id, record_id = conn.id, record.id
+    db.close()
+    result = _run_backup_sync({"backup_dir": bdir}, conn_id, record_id)
+    assert result["status"] == "success"
+    assert calls.get("retention") is True
+    assert calls.get("notify") is True
