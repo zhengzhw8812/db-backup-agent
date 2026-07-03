@@ -15,6 +15,7 @@ def test_keys_generated_and_persisted(tmp_path, monkeypatch):
     s1, f1 = b.bootstrap_keys()
     assert len(s1) > 20
     Fernet(f1.encode("ascii"))  # 是合法 Fernet key,不抛异常
+    assert (tmp_path / "keys" / "keys.json").exists()
     s2, f2 = b.bootstrap_keys()
     assert (s1, f1) == (s2, f2)
 
