@@ -18,3 +18,9 @@ def sha256_of_file(path: Path | str) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def decompress_file(src: Path | str, dest: Path | str) -> None:
+    """gzip 解压 src → dest(还原出原始未压缩 dump,供 restore 喂入适配器)。"""
+    with gzip.open(src, "rb") as fin, open(dest, "wb") as fout:
+        shutil.copyfileobj(fin, fout)
