@@ -53,6 +53,19 @@ def create_app() -> FastAPI:
     app.include_router(cloud.router, prefix="/api/v1", tags=["cloud"])
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
     app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
+
+    # 生产:托管前端 SPA(仅当 static_dir 存在;dev 由 Vite 服务,测试无该目录 → 跳过)
+    static_dir = settings.static_dir
+    if static_dir.exists():
+        from fastapi.responses import FileResponse
+
+        @app.get("/{full_path:path}")
+        async def _spa(full_path: str):
+            candidate = static_dir / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(static_dir / "index.html")
+
     return app
 
 
