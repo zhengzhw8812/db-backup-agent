@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
 
     data_dir: Path = Path("/data")
+    static_dir: Path = Path("/app/static")
     redis_url: str = "redis://127.0.0.1:6379/0"
     secret_key: str = ""
     fernet_key: str = ""
