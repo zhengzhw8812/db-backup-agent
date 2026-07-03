@@ -5,7 +5,13 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('../views/Login.vue') },
-    { path: '/', component: { template: '<div style="padding:24px;font-family:sans-serif">已登录(布局与页面在后续任务)</div>' } },
+    {
+      path: '/',
+      component: () => import('../layouts/AppLayout.vue'),
+      children: [
+        { path: '', component: { template: '<div>选择左侧菜单(连接页在 Task 4)</div>' } },
+      ],
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
