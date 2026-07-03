@@ -39,3 +39,9 @@ data/
 # Archive directory (development files only)
 archive/
 .superpowers/
+
+# Frontend (Vite + Vue3)
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+frontend/*.tsbuildinfo
