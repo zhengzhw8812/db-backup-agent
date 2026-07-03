@@ -1,26 +1,19 @@
-version: "3.8"
-
 services:
   db-backup:
-    image: tony5188/db-backup-agent:latest
+    build: .
+    image: db-backup-agent:latest
     container_name: db-backup-agent
     restart: unless-stopped
     ports:
-      - "5001:5001"
+      - "8000:8000"
     volumes:
-      - ./backups:/backups
-      - /etc/localtime:/etc/localtime:ro
+      - ./data:/data
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      SINGLE_USER_MODE: "true"
-      DEFAULT_USERNAME: ${DEFAULT_USERNAME:-admin}
-      DEFAULT_PASSWORD: ${DEFAULT_PASSWORD:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_INITIAL_ADMIN_USER: ${APP_INITIAL_ADMIN_USER:-admin}
+      APP_INITIAL_ADMIN_PASSWORD: ${APP_INITIAL_ADMIN_PASSWORD:-changeme}
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5001/api/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').read()"]
       interval: 30s
       timeout: 10s
       start_period: 40s
       retries: 3
-    security_opt:
-      - no-new-privileges:true
