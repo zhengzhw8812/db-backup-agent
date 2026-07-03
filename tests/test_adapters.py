@@ -183,3 +183,17 @@ def test_redis_restore_not_implemented():
     a = RedisAdapter()
     with pytest.raises(NotImplementedError):
         a.restore(ConnectionInfo(type="redis"), "/tmp/dump.rdb")
+
+
+def test_all_adapters_registered():
+    from app.adapters.base import get_adapter
+    from app.adapters.postgres import PostgresAdapter
+    from app.adapters.mysql import MysqlAdapter
+    from app.adapters.mongodb import MongoAdapter
+    from app.adapters.redis_db import RedisAdapter
+    from app.adapters.sqlite_db import SqliteAdapter
+    assert isinstance(get_adapter("pg"), PostgresAdapter)
+    assert isinstance(get_adapter("mysql"), MysqlAdapter)
+    assert isinstance(get_adapter("mongo"), MongoAdapter)
+    assert isinstance(get_adapter("redis"), RedisAdapter)
+    assert isinstance(get_adapter("sqlite"), SqliteAdapter)
