@@ -99,3 +99,42 @@ def test_run_restore_unknown_record_raises(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         run_restore(db, crypto, backup, conn, ProgressReporter(rid, FakeRedis()), bdir, 999999)
     db.close()
+
+
+def test_run_restore_sync_wires_service(monkeypatch, tmp_path):
+    from app.workers.jobs import _run_restore_sync
+    key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setattr("app.workers.jobs.bootstrap_keys", lambda: ("secret", key))
+    monkeypatch.setattr("app.services.restore_service.get_adapter", lambda t: FakeRestoreAdapter())
+
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    bdir = tmp_path / "backups"; bdir.mkdir()
+    crypto = Crypto(key.encode("ascii"))
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg", password_enc=crypto.encrypt("pw"))
+    db.add(conn); db.commit(); db.refresh(conn)
+    raw = bdir / "pg.sql"; raw.write_bytes(b"-- dump\n")
+    gz_name = "pg_1_1.sql.gz"; gz = bdir / gz_name
+    compress_file(raw, gz)
+    backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                          file_path=gz_name, size=gz.stat().st_size,
+                          checksum=sha256_of_file(gz),
+                          started_at=datetime.utcnow(), finished_at=datetime.utcnow())
+    db.add(backup); db.commit(); db.refresh(backup)
+    restore = RestoreRecord(backup_record_id=backup.id, target_connection_id=conn.id,
+                            status="running", started_at=datetime.utcnow())
+    db.add(restore); db.commit(); db.refresh(restore)
+    bid, cid, rid = backup.id, conn.id, restore.id
+    db.close()
+
+    class FakeReporter:
+        def report(self, *a, **k): pass
+        def is_cancelled(self): return False
+
+    # worker 内构造 ProgressReporter(rid, kind="restore");打桩需接受 kind kwarg
+    monkeypatch.setattr("app.workers.jobs.ProgressReporter", lambda rid, **kw: FakeReporter())
+    ctx = {"backup_dir": bdir}
+    result = _run_restore_sync(ctx, bid, cid, rid)
+    assert result["status"] == "success"
+    assert result["record_id"] == rid
