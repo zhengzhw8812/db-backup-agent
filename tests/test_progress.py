@@ -30,3 +30,16 @@ def test_cancel_flag_roundtrip():
     assert r.is_cancelled() is False
     request_cancel(7, fake)
     assert r.is_cancelled() is True
+
+
+def test_restore_namespace_is_isolated():
+    fake = FakeRedis()
+    ProgressReporter(5, fake, kind="restore").report("verify")
+    ProgressReporter(5, fake).report("dump")
+    channels = [ch for ch, _ in fake.published]
+    assert "restore:5" in channels
+    assert "job:5" in channels
+    # 同一 record_id 不同命名空间互不干扰
+    request_cancel(5, fake, kind="restore")
+    assert ProgressReporter(5, fake, kind="restore").is_cancelled() is True
+    assert ProgressReporter(5, fake).is_cancelled() is False
