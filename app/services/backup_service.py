@@ -28,21 +28,31 @@ def _decrypt(enc: str | None, crypto: Crypto) -> str | None:
     return crypto.decrypt(enc) if enc else None
 
 
+def _safe_remove(path: Path) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def run_backup(
     db: Session,
     crypto: Crypto,
     conn: DbConnection,
-    trigger: str,
     reporter: ProgressReporter,
     backup_dir: Path,
+    record_id: int,
     now_fn=datetime.utcnow,
 ) -> BackupRecord:
-    """执行一次备份:建记录(running)→ dump → 压缩 → 校验 → 更新(success/failed/cancelled)。
+    """对一条已存在的 running 记录执行备份:dump → 压缩 → 校验 → 更新(success/failed/cancelled)。
+    记录由调用方(Web API)预先创建,record_id 同时作为进度频道与取消锚点。
     每阶段上报进度,阶段间隙检查取消标志。失败捕获异常、清理中间文件并写入 error。"""
-    record = BackupRecord(connection_id=conn.id, trigger=trigger, status="running", started_at=now_fn())
-    db.add(record)
+    record = db.get(BackupRecord, record_id)
+    if record is None:
+        raise ValueError(f"备份记录不存在: {record_id}")
+    if record.started_at is None:
+        record.started_at = now_fn()
     db.commit()
-    db.refresh(record)
 
     raw_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql"
     gz_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql.gz"
@@ -98,10 +108,3 @@ def run_backup(
         db.refresh(record)
         reporter.report("failed", str(exc))
         return record
-
-
-def _safe_remove(path: Path) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
