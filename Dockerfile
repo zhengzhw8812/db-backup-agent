@@ -1,86 +1,47 @@
-# Dockerfile
-FROM debian:bookworm-slim
+# ---------- Stage 1: 构建前端 ----------
+FROM node:20-bookworm-slim AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
-# 1. 安装添加源所需的预备工具
-RUN apt-get update && apt-get install -y \
-    curl \
-    gnupg \
-    lsb-release \
-    ca-certificates \
-    wget \
+# ---------- Stage 2: 运行时 ----------
+FROM python:3.12-slim-bookworm
+
+# DB 客户端 + redis + supervisord(mongodump 暂略,见计划说明)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        mariadb-client \
+        redis-server \
+        supervisor \
+        gzip \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 添加 PostgreSQL 官方源 (为了获取 pg-client-17)
-# 导入 GPG Key
-RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg
-# 添加源列表
-RUN echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+WORKDIR /app
 
-# 3. 根据架构安装 MySQL 客户端 或 MariaDB 客户端
-# 注意: Oracle 的 MySQL 官方源在 Debian ARM64 上支持有限，且需要特定配置。
-# 在 ARM64 上使用 MariaDB 客户端是最佳替代方案 (兼容 MySQL 协议)。
-RUN ARCH="$(dpkg --print-architecture)" && \
-    if [ "$ARCH" = "amd64" ]; then \
-        echo "检测到 x86_64 (amd64) 架构，安装 MySQL 官方客户端..." && \
-        curl -fSL -o /tmp/mysql-apt-config.deb https://dev.mysql.com/get/mysql-apt-config_0.8.36-1_all.deb && \
-        DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/mysql-apt-config.deb && \
-        rm /tmp/mysql-apt-config.deb && \
-        apt-get update && \
-        apt-get install -y mysql-client; \
-    else \
-        echo "检测到 $ARCH 架构，安装 MariaDB 客户端..." && \
-        apt-get update && \
-        apt-get install -y mariadb-client; \
-    fi
+# Python 依赖(先装,利用层缓存)
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir .
 
-# 4. 安装其他通用工具和 Python
-# 注意: 这里再次 apt-get update 确保包列表是最新的 (虽然上面可能运行过，但为了稳健性)
-RUN apt-get update && apt-get install -y \
-    postgresql-client-17 \
-    cron \
-    gzip \
-    bash \
-    jq \
-    python3 \
-    python3-pip \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+# 应用代码
+COPY app ./app
 
-# 5. 配置工作目录和脚本
-WORKDIR /backups
+# 前端构建产物 → FastAPI 托管
+COPY --from=frontend /fe/dist /app/static
 
-COPY ./scripts/backup.sh /usr/local/bin/backup.sh
-COPY ./scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+# 进程配置
+COPY deploy/supervisord.conf /etc/supervisor/conf.d/app.conf
+COPY deploy/redis.conf /etc/redis/redis-app.conf
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# 移除BOM, 修正行结尾, 并赋予执行权限
-RUN sed -i -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' /usr/local/bin/backup.sh && \
-    sed -i -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' /usr/local/bin/entrypoint.sh && \
-    chmod +x /usr/local/bin/backup.sh && \
-    chmod +x /usr/local/bin/entrypoint.sh
+# 默认环境(可被 -e 覆盖)
+ENV APP_DATA_DIR=/data \
+    APP_REDIS_URL=redis://127.0.0.1:6379/0 \
+    APP_STATIC_DIR=/app/static
 
-# 复制应用文件
-COPY app.py /app.py
-COPY db_init.py /db_init.py
-COPY migrate_db.py /migrate_db.py
-COPY config_manager.py /config_manager.py
-COPY backup_lock.py /backup_lock.py
-COPY backup_logger.py /app/backup_logger.py
-COPY system_logger.py /app/system_logger.py
-COPY notifications.py /app/notifications.py
-COPY requirements.txt /requirements.txt
-COPY templates /templates
-COPY static /static
-
-# 安装 Python 依赖
-RUN pip3 install --no-cache-dir --break-system-packages -r /requirements.txt
-
-# 确保 backups 目录存在且有正确权限
-RUN mkdir -p /backups && chmod 755 /backups
-
-EXPOSE 5001
-
-COPY ./config/crontab /etc/cron.d/backup-cron
-RUN chmod 0644 /etc/cron.d/backup-cron && \
-    crontab /etc/cron.d/backup-cron
+VOLUME /data
+EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
