@@ -74,3 +74,30 @@ def test_run_sync_missing_file_raises(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError):
         run_sync(db, crypto, backup, bdir)
     db.close()
+
+
+def test_run_sync_sync_wires_service(monkeypatch, tmp_path):
+    from app.workers.jobs import _run_sync_sync
+    key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setattr("app.workers.jobs.bootstrap_keys", lambda: ("secret", key))
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: FakeStorage())
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    bdir = tmp_path / "backups"; bdir.mkdir()
+    (bdir / "pg.sql.gz").write_bytes(b"data")
+    crypto = Crypto(key.encode("ascii"))
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+    backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                          file_path="pg.sql.gz", started_at=datetime.utcnow())
+    db.add(backup); db.commit(); db.refresh(backup)
+    dest = CloudDestination(name="m", provider="s3", endpoint="h:9000", bucket="bk",
+                            access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"))
+    db.add(dest); db.commit(); db.refresh(dest)
+    db.add(SyncTarget(connection_id=conn.id, cloud_destination_id=dest.id, enabled=True))
+    db.commit()
+    bid = backup.id
+    db.close()
+    result = _run_sync_sync({"backup_dir": bdir}, bid)
+    assert len(result["synced"]) == 1
