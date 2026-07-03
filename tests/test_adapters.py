@@ -64,3 +64,41 @@ def test_mysql_argv_has_no_password():
     cmd = a.argv(ConnectionInfo(type="mysql", password="topsecret"), "/tmp/x.cnf")
     assert "topsecret" not in cmd
     assert "secret" not in " ".join(cmd)
+
+
+def test_pg_restore_argv_uses_psql_file_flag():
+    a = PostgresAdapter()
+    info = ConnectionInfo(type="pg", host="h", port=5432, db_name="shop", username="u", password="secret")
+    cmd = a.restore_argv(info, "/tmp/dump.sql")
+    assert cmd[0] == "psql"
+    assert "-f" in cmd and "/tmp/dump.sql" in cmd
+    assert "-d" in cmd and "shop" in cmd
+    assert "secret" not in cmd
+
+
+def test_mysql_restore_argv_uses_defaults_extra_file():
+    a = MysqlAdapter()
+    info = ConnectionInfo(type="mysql", host="h", port=3306, db_name="shop", username="u", password="secret")
+    cmd = a.restore_argv(info, "/tmp/x.cnf")
+    assert cmd[0] == "mysql"
+    assert "--defaults-extra-file=/tmp/x.cnf" in cmd
+    assert "shop" in cmd
+
+
+def test_mysql_restore_pipes_file_into_stdin(monkeypatch, tmp_path):
+    a = MysqlAdapter()
+    info = ConnectionInfo(type="mysql", db_name="shop", username="u", password="topsecret")
+    src = tmp_path / "dump.sql"
+    src.write_bytes(b"SELECT 1;\n")
+    seen = {}
+
+    def fake_run(argv, *a, **k):
+        seen["argv"] = argv
+        seen["stdin"] = k.get("stdin")
+        return None
+
+    monkeypatch.setattr("app.adapters.mysql.subprocess.run", fake_run)
+    a.restore(info, str(src))
+    assert seen["argv"][0] == "mysql"
+    assert seen["stdin"] is not None          # 从文件喂入 stdin
+    assert not any("topsecret" in str(c) for c in seen["argv"])  # 密码不在 argv(走 cnf)

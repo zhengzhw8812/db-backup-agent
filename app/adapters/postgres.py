@@ -36,5 +36,26 @@ class PostgresAdapter:
                 check=True,
             )
 
+    def restore_argv(self, info: ConnectionInfo, src_path: str) -> list[str]:
+        cmd = ["psql", "--no-password"]
+        if info.host:
+            cmd += ["-h", info.host]
+        if info.port:
+            cmd += ["-p", str(info.port)]
+        if info.username:
+            cmd += ["-U", info.username]
+        if info.db_name:
+            cmd += ["-d", info.db_name]
+        cmd += ["-f", src_path]
+        return cmd
+
+    def restore(self, info: ConnectionInfo, src_path: str) -> None:
+        subprocess.run(
+            self.restore_argv(info, src_path),
+            env=self.env(info),
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
 
 register_adapter(PostgresAdapter())

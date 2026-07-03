@@ -21,6 +21,10 @@ class BackupAdapter(Protocol):
         """执行 dump,把原始(未压缩)字节写入 dest_path。失败抛异常。"""
         ...
 
+    def restore(self, info: ConnectionInfo, src_path: str) -> None:
+        """从 src_path(未压缩的原始 dump)执行还原。失败抛异常。"""
+        ...
+
 
 _REGISTRY: dict[str, BackupAdapter] = {}
 

@@ -47,5 +47,27 @@ class MysqlAdapter:
             except OSError:
                 pass
 
+    def restore_argv(self, info: ConnectionInfo, defaults_file: str) -> list[str]:
+        cmd = ["mysql", f"--defaults-extra-file={defaults_file}"]
+        if info.host:
+            cmd += ["-h", info.host]
+        if info.port:
+            cmd += ["-P", str(info.port)]
+        if info.db_name:
+            cmd += [info.db_name]
+        return cmd
+
+    def restore(self, info: ConnectionInfo, src_path: str) -> None:
+        defaults_file = self._write_defaults(info)
+        try:
+            argv = self.restore_argv(info, defaults_file)
+            with open(src_path, "rb") as f:
+                subprocess.run(argv, stdin=f, stderr=subprocess.PIPE, check=True)
+        finally:
+            try:
+                os.unlink(defaults_file)
+            except OSError:
+                pass
+
 
 register_adapter(MysqlAdapter())
