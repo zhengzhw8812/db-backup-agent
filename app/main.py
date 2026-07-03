@@ -6,7 +6,7 @@ from app.bootstrap import bootstrap_keys
 from app.core.crypto import Crypto
 from app.db.session import init_engine, create_all, get_db
 from app.services.account_service import ensure_account
-from app.routers import health, auth
+from app.routers import health, auth, connections
 
 
 def create_app() -> FastAPI:
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.state.crypto = Crypto(fernet_key.encode("ascii"))
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+    app.include_router(connections.router, prefix="/api/v1/connections", tags=["connections"])
     return app
 
 
