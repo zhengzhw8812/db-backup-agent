@@ -17,6 +17,8 @@ const router = createRouter({
         { path: 'restore', component: () => import('../views/Restore.vue') },
         { path: 'cloud', component: () => import('../views/CloudSync.vue') },
         { path: 'history', component: () => import('../views/History.vue') },
+        { path: 'settings', component: () => import('../views/Settings.vue') },
+        { path: 'logs', component: () => import('../views/Logs.vue') },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
