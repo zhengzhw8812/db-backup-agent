@@ -8,7 +8,7 @@ from app.bootstrap import bootstrap_keys
 from app.core.crypto import Crypto
 from app.db.session import init_engine, create_all, get_db
 from app.services.account_service import ensure_account
-from app.routers import health, auth, connections, jobs, backups, schedules, dashboard, restore, cloud
+from app.routers import health, auth, connections, jobs, backups, schedules, dashboard, restore, cloud, logs
 from app.routers import settings as settings_router
 
 
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(restore.router, prefix="/api/v1", tags=["restore"])
     app.include_router(cloud.router, prefix="/api/v1", tags=["cloud"])
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
+    app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
     return app
 
 
