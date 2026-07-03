@@ -33,6 +33,9 @@ backups/users.db  # 数据库文件（包含所有配置和用户数据）
 .DS_Store
 Thumbs.db
 
+# Runtime data volume (mounted /data)
+data/
+
 # Archive directory (development files only)
 archive/
 .superpowers/
