@@ -1,16 +1,12 @@
 import json
-from fastapi import HTTPException, status, Request
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.models import DbConnection
 from app.core.crypto import Crypto
 
 
-def _crypto(request: Request) -> Crypto:
-    return request.app.state.crypto
-
-
-def create_connection(db: Session, request: Request, data) -> DbConnection:
+def create_connection(db: Session, crypto: Crypto, data) -> DbConnection:
     c = DbConnection(
         name=data.name,
         type=data.type,
@@ -18,7 +14,7 @@ def create_connection(db: Session, request: Request, data) -> DbConnection:
         port=data.port,
         db_name=data.db_name,
         username=data.username,
-        password_enc=_crypto(request).encrypt(data.password) if data.password else None,
+        password_enc=crypto.encrypt(data.password) if data.password else None,
         extra=json.dumps(data.extra) if data.extra is not None else None,
     )
     db.add(c)
@@ -38,14 +34,14 @@ def list_connections(db: Session) -> list[DbConnection]:
     return db.query(DbConnection).order_by(DbConnection.id).all()
 
 
-def update_connection(db: Session, request: Request, conn_id: int, data) -> DbConnection:
+def update_connection(db: Session, crypto: Crypto, conn_id: int, data) -> DbConnection:
     c = get_connection(db, conn_id)
     for field in ("name", "type", "host", "port", "db_name", "username"):
         val = getattr(data, field)
         if val is not None:
             setattr(c, field, val)
     if data.password is not None:
-        c.password_enc = _crypto(request).encrypt(data.password) if data.password else None
+        c.password_enc = crypto.encrypt(data.password) if data.password else None
     if data.extra is not None:
         c.extra = json.dumps(data.extra)
     db.commit()
@@ -59,7 +55,7 @@ def delete_connection(db: Session, conn_id: int) -> None:
     db.commit()
 
 
-def decrypt_password(c: DbConnection, request: Request) -> str | None:
+def decrypt_password(c: DbConnection, crypto: Crypto) -> str | None:
     if not c.password_enc:
         return None
-    return _crypto(request).decrypt(c.password_enc)
+    return crypto.decrypt(c.password_enc)

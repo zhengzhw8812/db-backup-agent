@@ -50,15 +50,11 @@ def test_decrypt_roundtrip(authed):
     from app.main import app as fastapi_app
     from app.services.connection_service import decrypt_password
 
-    class FakeReq:
-        pass  # 只需 .app 属性,服务层用 request.app.state.crypto
-
+    crypto = fastapi_app.state.crypto
     db = _session._SessionLocal()
     try:
         row = db.query(DbConnection).first()
-        fr = FakeReq()
-        fr.app = fastapi_app
-        assert decrypt_password(row, fr) == "roundtrip"
+        assert decrypt_password(row, crypto) == "roundtrip"
     finally:
         db.close()
 
@@ -101,13 +97,10 @@ def test_update_preserves_other_fields_and_reencrypts(authed):
     from app.main import app as fastapi_app
     from app.services.connection_service import decrypt_password
 
-    class FakeReq:
-        pass
+    crypto = fastapi_app.state.crypto
     db = _session._SessionLocal()
     try:
         row = db.get(DbConnection, cid)
-        fr = FakeReq()
-        fr.app = fastapi_app
-        assert decrypt_password(row, fr) == "pw2"
+        assert decrypt_password(row, crypto) == "pw2"
     finally:
         db.close()
