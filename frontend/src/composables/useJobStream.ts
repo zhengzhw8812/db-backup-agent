@@ -10,11 +10,11 @@ export function useJobStream() {
   const status = ref<string>('idle')
   let es: EventSource | null = null
 
-  function subscribe(recordId: number) {
+  function subscribe(recordId: number, urlFor: (id: number) => string = (id) => `/api/v1/jobs/${id}/events`) {
     close()
     events.value = []
     status.value = 'running'
-    es = new EventSource(`/api/v1/jobs/${recordId}/events`, { withCredentials: true })
+    es = new EventSource(urlFor(recordId), { withCredentials: true })
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data) as JobEvent
