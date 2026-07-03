@@ -2,6 +2,7 @@ from arq.connections import RedisSettings
 
 from app.config import settings
 from app.db.session import init_engine, create_all
+from app.workers.jobs import backup_job
 
 
 async def on_startup(ctx):
@@ -11,7 +12,6 @@ async def on_startup(ctx):
 
 
 class WorkerSettings:
-    # Task 8 后改为: functions = [backup_job]  (届时加 from app.workers.jobs import backup_job)
-    functions = []
+    functions = [backup_job]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = on_startup
