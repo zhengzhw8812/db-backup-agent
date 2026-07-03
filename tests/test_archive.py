@@ -21,3 +21,16 @@ def test_sha256_stable_and_distinct(tmp_path):
     assert sha256_of_file(a) == sha256_of_file(a)  # 稳定
     assert sha256_of_file(a) != sha256_of_file(b)  # 不同内容不同摘要
     assert len(sha256_of_file(a)) == 64
+
+
+from app.core.archive import compress_file, decompress_file
+
+
+def test_decompress_roundtrips_compress(tmp_path):
+    raw = tmp_path / "a.sql"
+    raw.write_bytes(b"CREATE TABLE t (id int);\nINSERT INTO t VALUES (1);\n")
+    gz = tmp_path / "a.sql.gz"
+    out = tmp_path / "out.sql"
+    compress_file(raw, gz)
+    decompress_file(gz, out)
+    assert out.read_bytes() == raw.read_bytes()
