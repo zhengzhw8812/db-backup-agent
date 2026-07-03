@@ -2,6 +2,7 @@ import pytest
 from app.adapters.base import get_adapter, register_adapter
 from app.adapters.postgres import PostgresAdapter
 from app.adapters.base import ConnectionInfo
+from app.adapters.mysql import MysqlAdapter
 
 
 class FakeAdapter:
@@ -45,3 +46,21 @@ def test_pg_env_carries_password():
     a = PostgresAdapter()
     env = a.env(ConnectionInfo(type="pg", password="topsecret"))
     assert env["PGPASSWORD"] == "topsecret"
+
+
+def test_mysql_argv_uses_defaults_extra_file():
+    a = MysqlAdapter()
+    info = ConnectionInfo(type="mysql", host="h", port=3306, db_name="shop", username="u", password="secret")
+    cmd = a.argv(info, "/tmp/x.cnf")
+    assert cmd[0] == "mysqldump"
+    assert "--defaults-extra-file=/tmp/x.cnf" in cmd
+    assert "-h" in cmd and "h" in cmd
+    assert "-P" in cmd and "3306" in cmd
+    assert "shop" in cmd
+
+
+def test_mysql_argv_has_no_password():
+    a = MysqlAdapter()
+    cmd = a.argv(ConnectionInfo(type="mysql", password="topsecret"), "/tmp/x.cnf")
+    assert "topsecret" not in cmd
+    assert "secret" not in " ".join(cmd)
