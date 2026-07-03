@@ -3,6 +3,7 @@ import client from './client'
 export interface BackupFile {
   id: number
   connection_id: number
+  trigger: string
   status: string
   file_path: string | null
   size: number | null

@@ -23,6 +23,7 @@ class JobOut(BaseModel):
 class BackupFileOut(BaseModel):
     id: int
     connection_id: int
+    trigger: str
     status: str
     file_path: str | None
     size: int | None
