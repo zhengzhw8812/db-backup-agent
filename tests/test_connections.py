@@ -105,7 +105,7 @@ def test_update_preserves_other_fields_and_reencrypts(authed):
         pass
     db = _session._SessionLocal()
     try:
-        row = db.query(DbConnection).get(cid)
+        row = db.get(DbConnection, cid)
         fr = FakeReq()
         fr.app = fastapi_app
         assert decrypt_password(row, fr) == "pw2"
