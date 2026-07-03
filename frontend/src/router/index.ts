@@ -9,7 +9,8 @@ const router = createRouter({
       path: '/',
       component: () => import('../layouts/AppLayout.vue'),
       children: [
-        { path: '', component: { template: '<div>选择左侧菜单(连接页在 Task 4)</div>' } },
+        { path: '', redirect: '/connections' },
+        { path: 'connections', component: () => import('../views/Connections.vue') },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
