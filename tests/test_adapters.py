@@ -156,3 +156,30 @@ def test_mongo_restore_argv_uses_archive_and_fields():
     assert cmd[0] == "mongorestore"
     assert "--archive=/tmp/dump.archive" in cmd
     assert "--host" in cmd and "--db" in cmd and "--username" in cmd
+
+
+def test_redis_dump_argv_uses_rdb_and_no_password():
+    from app.adapters.redis_db import RedisAdapter
+    a = RedisAdapter()
+    info = ConnectionInfo(type="redis", host="h", port=6379, password="topsecret")
+    cmd = a.dump_argv(info, "/tmp/dump.rdb")
+    assert cmd[0] == "redis-cli"
+    assert "-h" in cmd and "h" in cmd
+    assert "-p" in cmd and "6379" in cmd
+    assert "--rdb" in cmd and "/tmp/dump.rdb" in cmd
+    assert "topsecret" not in cmd  # 密码走 REDISCLI_AUTH env,不上 argv
+
+
+def test_redis_env_carries_password():
+    from app.adapters.redis_db import RedisAdapter
+    a = RedisAdapter()
+    env = a.env(ConnectionInfo(type="redis", password="topsecret"))
+    assert env["REDISCLI_AUTH"] == "topsecret"
+
+
+def test_redis_restore_not_implemented():
+    from app.adapters.redis_db import RedisAdapter
+    import pytest
+    a = RedisAdapter()
+    with pytest.raises(NotImplementedError):
+        a.restore(ConnectionInfo(type="redis"), "/tmp/dump.rdb")
