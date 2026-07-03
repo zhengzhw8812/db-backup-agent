@@ -6,7 +6,7 @@ from app.bootstrap import bootstrap_keys
 from app.core.crypto import Crypto
 from app.db.session import init_engine, create_all, get_db
 from app.services.account_service import ensure_account
-from app.routers import health, auth, connections, jobs, backups
+from app.routers import health, auth, connections, jobs, backups, schedules
 
 
 def create_app() -> FastAPI:
@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(connections.router, prefix="/api/v1/connections", tags=["connections"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])
     app.include_router(backups.router, prefix="/api/v1", tags=["backups"])
+    app.include_router(schedules.router, prefix="/api/v1", tags=["schedules"])
     return app
 
 
