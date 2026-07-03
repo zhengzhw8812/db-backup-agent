@@ -71,7 +71,9 @@ def run_restore(
             raise ValueError("备份文件路径非法")
         if not backup_path.exists():
             raise FileNotFoundError("备份文件不存在")
-        if backup_record.checksum and sha256_of_file(backup_path) != backup_record.checksum:
+        if not backup_record.checksum:
+            raise ValueError("备份记录缺少校验和,无法校验完整性")
+        if sha256_of_file(backup_path) != backup_record.checksum:
             raise ValueError("校验和不匹配,备份文件可能损坏")
 
         if _check_cancel():

@@ -138,3 +138,14 @@ def test_run_restore_sync_wires_service(monkeypatch, tmp_path):
     result = _run_restore_sync(ctx, bid, cid, rid)
     assert result["status"] == "success"
     assert result["record_id"] == rid
+
+
+def test_run_restore_missing_checksum_fails(tmp_path, monkeypatch):
+    db, conn, crypto, bdir, backup, rid = _setup(tmp_path, monkeypatch)
+    backup.checksum = None
+    db.commit()
+    fake = FakeRedis()
+    rec = run_restore(db, crypto, backup, conn, ProgressReporter(rid, fake), bdir, rid)
+    assert rec.status == "failed"
+    assert "校验和" in rec.error
+    db.close()
