@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -7,6 +9,18 @@ from app.core.crypto import Crypto
 from app.db.session import init_engine, create_all, get_db
 from app.services.account_service import ensure_account
 from app.routers import health, auth, connections, jobs, backups, schedules
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.services.scheduler import SchedulerService
+    sched = SchedulerService(app)
+    await sched.start()
+    app.state.scheduler = sched
+    try:
+        yield
+    finally:
+        sched.stop()
 
 
 def create_app() -> FastAPI:
@@ -23,7 +37,7 @@ def create_app() -> FastAPI:
         finally:
             db.close()
 
-    app = FastAPI(title="DB Backup Agent", version="3.0.0")
+    app = FastAPI(title="DB Backup Agent", version="3.0.0", lifespan=lifespan)
     app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax", https_only=False)
     app.state.crypto = Crypto(fernet_key.encode("ascii"))
     app.state.arq = None

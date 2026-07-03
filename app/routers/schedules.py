@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.deps import get_current_account
@@ -15,15 +15,24 @@ def list_(db: Session = Depends(get_db), _=Depends(get_current_account)):
 
 
 @router.post("/schedules", response_model=ScheduleOut, status_code=201)
-def create(payload: ScheduleCreate, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return svc.create_schedule(db, payload)
+def create(payload: ScheduleCreate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    s = svc.create_schedule(db, payload)
+    request.app.state.scheduler.upsert(s)
+    s.next_run_at = request.app.state.scheduler.next_run_at(s.id)
+    db.commit(); db.refresh(s)
+    return s
 
 
 @router.put("/schedules/{sid}", response_model=ScheduleOut)
-def update(sid: int, payload: ScheduleUpdate, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return svc.update_schedule(db, sid, payload)
+def update(sid: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    s = svc.update_schedule(db, sid, payload)
+    request.app.state.scheduler.upsert(s)
+    s.next_run_at = request.app.state.scheduler.next_run_at(s.id)
+    db.commit(); db.refresh(s)
+    return s
 
 
 @router.delete("/schedules/{sid}", status_code=204)
-def delete(sid: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
+def delete(sid: int, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    request.app.state.scheduler.remove(sid)
     svc.delete_schedule(db, sid)
