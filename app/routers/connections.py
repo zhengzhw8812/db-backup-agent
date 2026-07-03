@@ -25,7 +25,7 @@ def list_(db: Session = Depends(get_db), _=Depends(get_current_account)):
 
 @router.post("", response_model=ConnectionOut, status_code=201)
 def create(payload: ConnectionCreate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return _serialize(svc.create_connection(db, request, payload))
+    return _serialize(svc.create_connection(db, request.app.state.crypto, payload))
 
 
 @router.get("/{conn_id}", response_model=ConnectionOut)
@@ -35,7 +35,7 @@ def detail(conn_id: int, db: Session = Depends(get_db), _=Depends(get_current_ac
 
 @router.put("/{conn_id}", response_model=ConnectionOut)
 def update(conn_id: int, payload: ConnectionUpdate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return _serialize(svc.update_connection(db, request, conn_id, payload))
+    return _serialize(svc.update_connection(db, request.app.state.crypto, conn_id, payload))
 
 
 @router.delete("/{conn_id}", status_code=204)

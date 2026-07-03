@@ -16,6 +16,9 @@ def bootstrap_keys() -> tuple[str, str]:
 
     写入采用原子方式(临时文件 + os.replace):避免进程被中断时 keys.json 写一半,
     导致下次启动 JSON 解析失败 —— 删除 keys.json 会丢失 fernet_key,使历史加密凭据无法解密。"""
+    # 优先使用环境变量提供的密钥(spec §11);否则首启自动生成并持久化
+    if config.settings.secret_key and config.settings.fernet_key:
+        return config.settings.secret_key, config.settings.fernet_key
     keys_dir = config.settings.keys_dir
     keys_dir.mkdir(parents=True, exist_ok=True)
     key_file = keys_dir / "keys.json"
