@@ -14,6 +14,7 @@ const menuOptions = [
   { label: '备份计划', key: 'schedules' },
   { label: '备份', key: 'backups' },
   { label: '恢复', key: 'restore' },
+  { label: '云存储', key: 'cloud' },
   { label: '备份历史', key: 'history' },
   // 3b 增加:备份 / 历史 / 日志 / 设置
 ]
