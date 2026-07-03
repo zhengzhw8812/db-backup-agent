@@ -151,7 +151,7 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
       <div style="margin-top:16px">
         <n-space align="center" justify="space-between">
           <n-text depth="3">实时日志:</n-text>
-          <n-button size="small" :disabled="!['success','failed','cancelled'].includes(status)" @click="cancelCurrent">取消</n-button>
+          <n-button size="small" :disabled="['success','failed','cancelled'].includes(status)" @click="cancelCurrent">取消</n-button>
         </n-space>
         <div class="log">
           <div v-for="(e, i) in events" :key="i">
