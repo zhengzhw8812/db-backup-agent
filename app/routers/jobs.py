@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app import config
 from app.db.session import get_db
 from app.db.models import BackupRecord, DbConnection
 from app.deps import get_current_account
@@ -20,7 +20,7 @@ async def _get_arq(app):
     """惰性创建 arq 连接池(测试里可直接覆盖 app.state.arq)。"""
     if getattr(app.state, "arq", None) is None:
         from arq import create_pool
-        app.state.arq = await create_pool(settings.redis_url)
+        app.state.arq = await create_pool(config.settings.redis_url)
     return app.state.arq
 
 
