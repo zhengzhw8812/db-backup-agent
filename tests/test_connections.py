@@ -69,3 +69,45 @@ def test_update_and_delete(authed):
     assert r.json()["name"] == "pg-renamed"
     assert authed.delete(f"/api/v1/connections/{cid}").status_code == 204
     assert authed.get("/api/v1/connections").json() == []
+
+
+def test_get_by_id(authed):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg", "host": "h", "port": 5432}).json()["id"]
+    r = authed.get(f"/api/v1/connections/{cid}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == cid and body["host"] == "h" and body["port"] == 5432
+    assert "password" not in body
+
+
+def test_unknown_id_returns_404(authed):
+    assert authed.get("/api/v1/connections/9999").status_code == 404
+    assert authed.delete("/api/v1/connections/9999").status_code == 404
+
+
+def test_update_preserves_other_fields_and_reencrypts(authed):
+    cid = authed.post("/api/v1/connections", json={
+        "name": "pg1", "type": "pg", "host": "h1", "port": 5432, "db_name": "d", "username": "u", "password": "pw1"
+    }).json()["id"]
+    # partial update: only name → host/port/db_name/username must survive
+    authed.put(f"/api/v1/connections/{cid}", json={"name": "renamed"})
+    body = authed.get(f"/api/v1/connections/{cid}").json()
+    assert body["name"] == "renamed"
+    assert body["host"] == "h1" and body["port"] == 5432 and body["db_name"] == "d" and body["username"] == "u"
+    # password re-encryption: change password, verify decrypt roundtrips to the NEW value
+    authed.put(f"/api/v1/connections/{cid}", json={"password": "pw2"})
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    from app.main import app as fastapi_app
+    from app.services.connection_service import decrypt_password
+
+    class FakeReq:
+        pass
+    db = _session._SessionLocal()
+    try:
+        row = db.query(DbConnection).get(cid)
+        fr = FakeReq()
+        fr.app = fastapi_app
+        assert decrypt_password(row, fr) == "pw2"
+    finally:
+        db.close()
