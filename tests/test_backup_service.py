@@ -80,3 +80,46 @@ def test_run_backup_cancelled(tmp_path, monkeypatch):
     rec = run_backup(db, crypto, conn, "manual", reporter, bdir)
     assert rec.status == "cancelled"
     db.close()
+
+
+import json
+
+
+class FlippingRedis:
+    """先返回未取消;dump 执行后翻转为已取消。"""
+    def __init__(self):
+        self.cancelled = False
+        self.published = []
+    def publish(self, channel, msg):
+        self.published.append((channel, msg))
+    def exists(self, key):
+        return self.cancelled
+    def set(self, k, v):
+        self.cancelled = True
+
+
+class FlipAfterDumpAdapter:
+    type = "pg"
+    def __init__(self, redis):
+        self.redis = redis
+    def dump(self, info, dest_path):
+        with open(dest_path, "wb") as f:
+            f.write(b"-- partial dump\n")
+        self.redis.cancelled = True  # 写完 raw 后翻转取消标志
+
+
+def test_run_backup_cancelled_after_dump_cleans_raw(tmp_path, monkeypatch):
+    db, conn, crypto, bdir = _setup(tmp_path, monkeypatch)
+    bdir.mkdir()
+    fake_redis = FlippingRedis()
+    monkeypatch.setattr("app.services.backup_service.get_adapter",
+                        lambda t: FlipAfterDumpAdapter(fake_redis))
+    reporter = ProgressReporter(conn.id, fake_redis)
+    rec = run_backup(db, crypto, conn, "manual", reporter, bdir)
+    assert rec.status == "cancelled"
+    assert rec.duration_ms is not None          # Fix 4: 取消也记时长
+    assert not list(bdir.glob("*.sql"))          # raw 已清理
+    assert not list(bdir.glob("*.sql.gz"))       # 未生成 gz
+    stages = [json.loads(m)["stage"] for _, m in fake_redis.published]
+    assert "cancelled" in stages
+    db.close()

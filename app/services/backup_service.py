@@ -36,34 +36,35 @@ def run_backup(
     reporter: ProgressReporter,
     backup_dir: Path,
     now_fn=datetime.utcnow,
-    sleep_fn=time.sleep,
 ) -> BackupRecord:
     """执行一次备份:建记录(running)→ dump → 压缩 → 校验 → 更新(success/failed/cancelled)。
-    每阶段上报进度,阶段间隙检查取消标志。失败捕获异常并写入 error。"""
+    每阶段上报进度,阶段间隙检查取消标志。失败捕获异常、清理中间文件并写入 error。"""
     record = BackupRecord(connection_id=conn.id, trigger=trigger, status="running", started_at=now_fn())
     db.add(record)
     db.commit()
     db.refresh(record)
 
+    raw_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql"
+    gz_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql.gz"
+    start = time.monotonic()
+
     def _check_cancel():
         if reporter.is_cancelled():
             record.status = "cancelled"
             record.finished_at = now_fn()
+            record.duration_ms = int((time.monotonic() - start) * 1000)
             db.commit()
             db.refresh(record)
             reporter.report("cancelled")
             return True
         return False
 
-    raw_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql"
-    gz_path = backup_dir / f"{conn.type}_{conn.id}_{record.id}.sql.gz"
-    start = time.monotonic()
     try:
         if _check_cancel():
             return record
 
-        reporter.report("dump")
         adapter = get_adapter(conn.type)
+        reporter.report("dump")
         adapter.dump(_conn_info(conn, crypto), str(raw_path))
 
         if _check_cancel():
@@ -87,6 +88,8 @@ def run_backup(
         reporter.report("success")
         return record
     except Exception as exc:
+        _safe_remove(raw_path)
+        _safe_remove(gz_path)
         record.status = "failed"
         record.error = str(exc)
         record.finished_at = now_fn()
