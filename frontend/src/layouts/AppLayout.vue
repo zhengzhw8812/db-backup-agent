@@ -11,7 +11,8 @@ const { theme, overrides, dark, toggle } = useTheme()
 const menuOptions = [
   { label: '仪表盘', key: 'dashboard' },
   { label: '数据库连接', key: 'connections' },
-  // 3b 增加:备份计划 / 备份 / 历史 / 日志 / 设置
+  { label: '备份计划', key: 'schedules' },
+  // 3b 增加:备份 / 历史 / 日志 / 设置
 ]
 function onSelect(key: string) { router.push(`/${key}`) }
 async function logout() { await auth.doLogout(); router.push('/login') }
