@@ -45,7 +45,7 @@ def update_connection(db: Session, request: Request, conn_id: int, data) -> DbCo
         if val is not None:
             setattr(c, field, val)
     if data.password is not None:
-        c.password_enc = _crypto(request).encrypt(data.password)
+        c.password_enc = _crypto(request).encrypt(data.password) if data.password else None
     if data.extra is not None:
         c.extra = json.dumps(data.extra)
     db.commit()
