@@ -78,3 +78,27 @@ class RestoreRecord(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class CloudDestination(Base):
+    __tablename__ = "cloud_destinations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)   # s3
+    endpoint: Mapped[str] = mapped_column(String(255), nullable=False)  # host:port
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bucket: Mapped[str] = mapped_column(String(128), nullable=False)
+    access_key_enc: Mapped[str] = mapped_column(Text, nullable=False)   # Fernet 密文
+    secret_enc: Mapped[str] = mapped_column(Text, nullable=False)       # Fernet 密文
+    prefix: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    secure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SyncTarget(Base):
+    __tablename__ = "sync_targets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("db_connections.id", ondelete="CASCADE"), nullable=False)
+    cloud_destination_id: Mapped[int] = mapped_column(ForeignKey("cloud_destinations.id", ondelete="CASCADE"), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
