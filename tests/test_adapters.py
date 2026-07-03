@@ -131,3 +131,28 @@ def test_sqlite_dump_missing_db_name_raises():
     a = SqliteAdapter()
     with pytest.raises(ValueError):
         a.dump(ConnectionInfo(type="sqlite"), "/tmp/whatever.db")
+
+
+def test_mongo_dump_argv_uses_archive_and_fields():
+    from app.adapters.mongodb import MongoAdapter
+    a = MongoAdapter()
+    info = ConnectionInfo(type="mongo", host="h", port=27017, db_name="shop",
+                          username="u", password="secret")
+    cmd = a.dump_argv(info, "/tmp/dump.archive")
+    assert cmd[0] == "mongodump"
+    assert "--archive=/tmp/dump.archive" in cmd
+    assert "--host" in cmd and "h" in cmd
+    assert "--port" in cmd and "27017" in cmd
+    assert "--db" in cmd and "shop" in cmd
+    assert "--username" in cmd and "u" in cmd
+    assert "--password" in cmd and "secret" in cmd
+
+
+def test_mongo_restore_argv_uses_archive_and_fields():
+    from app.adapters.mongodb import MongoAdapter
+    a = MongoAdapter()
+    info = ConnectionInfo(type="mongo", host="h", port=27017, db_name="shop", username="u", password="secret")
+    cmd = a.restore_argv(info, "/tmp/dump.archive")
+    assert cmd[0] == "mongorestore"
+    assert "--archive=/tmp/dump.archive" in cmd
+    assert "--host" in cmd and "--db" in cmd and "--username" in cmd
