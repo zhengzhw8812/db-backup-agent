@@ -102,3 +102,24 @@ class SyncTarget(Base):
     connection_id: Mapped[int] = mapped_column(ForeignKey("db_connections.id", ondelete="CASCADE"), nullable=False)
     cloud_destination_id: Mapped[int] = mapped_column(ForeignKey("cloud_destinations.id", ondelete="CASCADE"), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class NotificationConfig(Base):
+    __tablename__ = "notification_config"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    smtp_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    smtp_ssl: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    smtp_starttls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    smtp_user: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_password_enc: Mapped[str | None] = mapped_column(Text, nullable=True)   # Fernet
+    smtp_from: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recipients: Mapped[str | None] = mapped_column(Text, nullable=True)           # 逗号分隔
+    wechat_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    wechat_corp_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    wechat_agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    wechat_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)    # Fernet
+    notify_on_success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_on_failure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

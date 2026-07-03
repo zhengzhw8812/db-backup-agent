@@ -10,7 +10,8 @@ def test_all_tables_created(tmp_path):
     inspector = inspect(_engine)
     tables = set(inspector.get_table_names())
     expected = {"account", "db_connections", "schedules", "backup_records",
-                "restore_records", "cloud_destinations", "sync_targets", "system_logs"}
+                "restore_records", "cloud_destinations", "sync_targets", "system_logs",
+                "notification_config"}
     assert expected.issubset(tables)
 
 
@@ -53,4 +54,17 @@ def test_restore_record_persists(tmp_path):
     assert got is not None
     assert got.backup_record_id == backup.id
     assert got.status == "running"
+    db.close()
+
+
+def test_notification_config_persists(tmp_path):
+    from app.db.models import NotificationConfig
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    from app.db.session import _SessionLocal
+    db = _SessionLocal()
+    cfg = NotificationConfig(email_enabled=False, wechat_enabled=False,
+                             notify_on_success=True, notify_on_failure=True)
+    db.add(cfg); db.commit(); db.refresh(cfg)
+    assert db.get(NotificationConfig, cfg.id).notify_on_success is True
     db.close()
