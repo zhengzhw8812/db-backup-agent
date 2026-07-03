@@ -102,3 +102,32 @@ def test_mysql_restore_pipes_file_into_stdin(monkeypatch, tmp_path):
     assert seen["argv"][0] == "mysql"
     assert seen["stdin"] is not None          # 从文件喂入 stdin
     assert not any("topsecret" in str(c) for c in seen["argv"])  # 密码不在 argv(走 cnf)
+
+
+def test_sqlite_dump_copies_file(tmp_path):
+    from app.adapters.sqlite_db import SqliteAdapter
+    src = tmp_path / "app.db"
+    src.write_bytes(b"SQLite format 3\x00payload")
+    a = SqliteAdapter()
+    dest = tmp_path / "out.db"
+    a.dump(ConnectionInfo(type="sqlite", db_name=str(src)), str(dest))
+    assert dest.read_bytes() == src.read_bytes()
+
+
+def test_sqlite_restore_overwrites_target(tmp_path):
+    from app.adapters.sqlite_db import SqliteAdapter
+    target = tmp_path / "app.db"
+    target.write_bytes(b"old")
+    backup = tmp_path / "bk.db"
+    backup.write_bytes(b"new-content")
+    a = SqliteAdapter()
+    a.restore(ConnectionInfo(type="sqlite", db_name=str(target)), str(backup))
+    assert target.read_bytes() == b"new-content"
+
+
+def test_sqlite_dump_missing_db_name_raises():
+    from app.adapters.sqlite_db import SqliteAdapter
+    import pytest
+    a = SqliteAdapter()
+    with pytest.raises(ValueError):
+        a.dump(ConnectionInfo(type="sqlite"), "/tmp/whatever.db")
