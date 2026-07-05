@@ -1,7 +1,7 @@
 from __future__ import annotations
-import subprocess
+from typing import Callable
 
-from app.adapters.base import ConnectionInfo, register_adapter
+from app.adapters.base import ConnectionInfo, register_adapter, run_subprocess
 
 
 class MongoAdapter:
@@ -41,11 +41,17 @@ class MongoAdapter:
             cmd += ["--password", info.password]
         return cmd
 
-    def dump(self, info: ConnectionInfo, dest_path: str) -> None:
-        subprocess.run(self.dump_argv(info, dest_path), stderr=subprocess.PIPE, check=True)
+    def dump(self, info: ConnectionInfo, dest_path: str, *,
+             is_cancelled: Callable[[], bool] | None = None) -> None:
+        run_subprocess(self.dump_argv(info, dest_path), is_cancelled=is_cancelled)
 
-    def restore(self, info: ConnectionInfo, src_path: str) -> None:
-        subprocess.run(self.restore_argv(info, src_path), stderr=subprocess.PIPE, check=True)
+    def restore(self, info: ConnectionInfo, src_path: str, *,
+                is_cancelled: Callable[[], bool] | None = None) -> None:
+        run_subprocess(self.restore_argv(info, src_path), is_cancelled=is_cancelled)
+
+    def test(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> None:
+        # mongotool 无轻量 ping 命令,mongodump 探测过重;暂不支持自动测试
+        raise NotImplementedError("MongoDB 暂不支持连接测试,请新建后直接尝试备份")
 
 
 register_adapter(MongoAdapter())

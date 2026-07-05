@@ -25,13 +25,21 @@ class ProgressReporter:
         self._client = client or redis.Redis.from_url(settings.redis_url)
 
     def report(self, stage: str, detail: str = "") -> None:
-        self._client.publish(
-            _channel(self.record_id, self.kind),
-            json.dumps({"stage": stage, "detail": detail}),
-        )
+        # 进度上报是"尽力而为":Redis 瞬时不可用不应让正在执行的备份失败
+        try:
+            self._client.publish(
+                _channel(self.record_id, self.kind),
+                json.dumps({"stage": stage, "detail": detail}),
+            )
+        except Exception:
+            pass
 
     def is_cancelled(self) -> bool:
-        return bool(self._client.exists(_cancel_key(self.record_id, self.kind)))
+        # Redis 不可达时假定"不可取消",而不是抛异常让备份失败
+        try:
+            return bool(self._client.exists(_cancel_key(self.record_id, self.kind)))
+        except Exception:
+            return False
 
 
 def request_cancel(record_id: int, client: redis.Redis | None = None, kind: str = "job") -> None:

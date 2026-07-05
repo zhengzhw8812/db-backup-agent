@@ -43,3 +43,20 @@ def test_restore_namespace_is_isolated():
     request_cancel(5, fake, kind="restore")
     assert ProgressReporter(5, fake, kind="restore").is_cancelled() is True
     assert ProgressReporter(5, fake).is_cancelled() is False
+
+
+class BoomRedis:
+    """任何操作都抛异常(模拟 Redis 瞬时不可达)。"""
+    def publish(self, *a, **k):
+        raise RuntimeError("redis down")
+    def exists(self, *a, **k):
+        raise RuntimeError("redis down")
+    def set(self, *a, **k):
+        raise RuntimeError("redis down")
+
+
+def test_report_and_cancel_swallow_redis_errors():
+    """进度/取消管道的 Redis 异常不应让正在执行的备份失败。"""
+    r = ProgressReporter(1, BoomRedis())
+    r.report("dump")                # 不抛
+    assert r.is_cancelled() is False  # 不抛,默认不可取消

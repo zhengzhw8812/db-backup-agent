@@ -1,12 +1,12 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NotificationSettings(BaseModel):
     email_enabled: bool = False
     smtp_host: str | None = None
-    smtp_port: int | None = None
+    smtp_port: int | None = Field(None, ge=1, le=65535)
     smtp_ssl: bool = False
     smtp_starttls: bool = True
     smtp_user: str | None = None

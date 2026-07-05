@@ -12,8 +12,9 @@ router = APIRouter()
 
 @router.get("/logs", response_model=list[SystemLogOut])
 def list_logs(level: str | None = Query(default=None),
+              limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
               db: Session = Depends(get_db), _=Depends(get_current_account)):
     q = db.query(SystemLog).order_by(SystemLog.id.desc())
     if level:
         q = q.filter(SystemLog.level == level)
-    return q.limit(500).all()
+    return q.offset(offset).limit(limit).all()

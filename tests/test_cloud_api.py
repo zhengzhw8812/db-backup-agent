@@ -49,6 +49,27 @@ def test_test_destination(monkeypatch, authed):
     assert r.json() == {"ok": True}
 
 
+def test_create_destination_rejects_unknown_provider(authed):
+    r = authed.post("/api/v1/cloud-destinations", json={
+        "name": "x", "provider": "s4", "endpoint": "localhost:9000",
+        "bucket": "bk", "access_key": "AK", "secret": "SK", "secure": False})
+    assert r.status_code == 400
+
+
+def test_sync_target_duplicate_rejected(authed):
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    db = _session._SessionLocal()
+    db.add(DbConnection(name="c", type="pg")); db.commit()
+    conn_id = db.query(DbConnection).first().id
+    db.close()
+    dest_id = _create_dest(authed)["id"]
+    body = {"connection_id": conn_id, "cloud_destination_id": dest_id}
+    assert authed.post("/api/v1/sync-targets", json=body).status_code == 201
+    # 同一(连接,目标)再次创建 → 409
+    assert authed.post("/api/v1/sync-targets", json=body).status_code == 409
+
+
 def test_sync_targets_crud(authed):
     from app.db import session as _session
     from app.db.models import DbConnection

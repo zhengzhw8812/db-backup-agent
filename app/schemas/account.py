@@ -9,4 +9,3 @@ class LoginRequest(BaseModel):
 class AccountOut(BaseModel):
     id: int
     username: str
-    totp_enabled: bool

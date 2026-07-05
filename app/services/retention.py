@@ -1,17 +1,10 @@
 from __future__ import annotations
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.db.models import DbConnection, BackupRecord, Schedule
-
-
-def _safe_unlink(path: Path) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+from app.core.fsutil import safe_remove
 
 
 def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
@@ -23,7 +16,8 @@ def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
     )
     if not schedules:
         return 0
-    days = min(s.retention_days for s in schedules)
+    # 至少保留 1 天,避免 retention_days=0 把"刚生成的备份"立即删掉
+    days = max(min(s.retention_days for s in schedules), 1)
     cutoff = datetime.utcnow() - timedelta(days=days)
     old = (
         db.query(BackupRecord)
@@ -35,7 +29,7 @@ def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
     count = 0
     for rec in old:
         if rec.file_path:
-            _safe_unlink(backup_dir / rec.file_path)
+            safe_remove(backup_dir / rec.file_path)
         db.delete(rec)
         count += 1
     db.commit()

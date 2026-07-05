@@ -61,3 +61,18 @@ def test_retention_only_cleans_success(tmp_path):
     db.add(rec); db.commit()
     assert run_retention(db, conn, bdir) == 0   # 非 success 不删
     db.close()
+
+
+def test_retention_zero_days_floored_to_one(tmp_path):
+    """retention_days=0 不应把刚生成的备份立即删掉——至少保留 1 天。"""
+    init_engine(f"sqlite:///{tmp_path/'t.db'}"); create_all()
+    bdir = tmp_path / "backups"; bdir.mkdir()
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
+    db.add(Schedule(connection_id=conn.id, cron_expr="0 2 * * *", retention_days=0, enabled=True))
+    db.commit()
+    fresh = _mk(db, conn, bdir, "fresh.sql.gz", days_old=0)  # 刚生成(几秒前)
+    count = run_retention(db, conn, bdir)
+    assert count == 0  # 不会被立刻清掉
+    assert db.get(BackupRecord, fresh.id) is not None
+    db.close()

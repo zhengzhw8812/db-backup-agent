@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -33,8 +33,9 @@ def _resolve(record: BackupRecord) -> Path:
 
 
 @router.get("/backups", response_model=list[BackupFileOut])
-def list_backups(db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return db.query(BackupRecord).order_by(BackupRecord.id.desc()).all()
+def list_backups(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                 db: Session = Depends(get_db), _=Depends(get_current_account)):
+    return db.query(BackupRecord).order_by(BackupRecord.id.desc()).offset(offset).limit(limit).all()
 
 
 @router.get("/backups/{record_id}/download")
@@ -51,8 +52,16 @@ def delete_backup(record_id: int, db: Session = Depends(get_db), _=Depends(get_c
     rec = db.get(BackupRecord, record_id)
     if rec is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    try:
-        _resolve(rec).unlink()
-    except HTTPException:
-        pass  # 文件已不在也允许删记录
+    # 先删记录再删文件:若 commit 失败,文件仍在,记录也仍在(一致);反之会留指向缺失文件的记录
+    file_path = None
+    if rec.file_path:
+        try:
+            file_path = _resolve(rec)
+        except HTTPException:
+            file_path = None  # 文件已不在也允许删记录
     db.delete(rec); db.commit()
+    if file_path is not None:
+        try:
+            file_path.unlink()
+        except OSError:
+            pass  # 文件已不在也算成功

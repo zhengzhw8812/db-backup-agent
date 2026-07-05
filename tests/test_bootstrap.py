@@ -39,6 +39,15 @@ def test_env_provided_keys_take_precedence(tmp_path, monkeypatch):
     assert not (tmp_path / "keys" / "keys.json").exists()  # env 提供时不落盘
 
 
+def test_partial_env_keys_raises(tmp_path, monkeypatch):
+    """只提供一对中的一个 → 硬报错(避免另一个悄悄回落到生成值)。"""
+    monkeypatch.setenv("APP_SECRET_KEY", "only-one")
+    b = _reload(tmp_path, monkeypatch)
+    import pytest
+    with pytest.raises(RuntimeError):
+        b.bootstrap_keys()
+
+
 def test_env_bootstrap_creates_admin(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("APP_INITIAL_ADMIN_USER", "admin")

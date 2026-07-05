@@ -18,7 +18,7 @@ class FakeRestoreAdapter:
     def __init__(self):
         self.restored = None
 
-    def restore(self, info, src_path):
+    def restore(self, info, src_path, *, is_cancelled=None):
         with open(src_path, "rb") as f:
             self.restored = f.read()
 

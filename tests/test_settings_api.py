@@ -24,6 +24,18 @@ def test_get_returns_defaults_when_empty(authed):
     assert "smtp_password" not in r and "wechat_secret" not in r
 
 
+def test_get_is_read_only(authed):
+    """GET 不应在 DB 建行(保持幂等/只读);建行只在 PUT。"""
+    from app.db import session as _session
+    from app.db.models import NotificationConfig
+    authed.get("/api/v1/settings/notifications")
+    db = _session._SessionLocal()
+    try:
+        assert db.query(NotificationConfig).count() == 0
+    finally:
+        db.close()
+
+
 def test_put_updates_and_hides_secrets(authed):
     r = authed.put("/api/v1/settings/notifications", json={
         "email_enabled": True, "smtp_host": "h", "smtp_port": 465, "smtp_ssl": True,
