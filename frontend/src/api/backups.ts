@@ -4,6 +4,7 @@ export interface BackupFile {
   id: number
   connection_id: number
   trigger: string
+  db_name: string | null
   status: string
   file_path: string | null
   size: number | null
