@@ -25,7 +25,7 @@ def test_run_scheduled_backup_creates_record_and_enqueues(monkeypatch, tmp_path)
     asyncio.run(sched_mod.run_scheduled_backup(SimpleNamespace(), conn_id, 1))
 
     assert enqueued and enqueued[0][0] == "backup_job"
-    assert enqueued[0][1] == conn_id and isinstance(enqueued[0][2], int)
+    assert enqueued[0][1] == conn_id and isinstance(enqueued[0][2], list)
     db = _session._SessionLocal()
     rec = db.query(BackupRecord).filter(BackupRecord.trigger == "scheduled").first()
     assert rec is not None and rec.status == "running"
@@ -51,3 +51,36 @@ def test_scheduler_upsert_enabled_adds_job():
     svc.upsert(s)
     assert "schedule_1" in removed
     svc.remove(99)
+
+
+def test_run_scheduled_backup_skips_when_already_running(monkeypatch, tmp_path):
+    """同一连接已有 running 备份 → 计划触发跳过(不建新记录、不投递)。"""
+    from app.db import session as _session
+    import app.db.models  # noqa
+    from app.db.models import DbConnection, BackupRecord
+    from app.services import scheduler as sched_mod
+    from datetime import datetime
+
+    _session.init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    _session.create_all()
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
+    conn_id = conn.id
+    db.add(BackupRecord(connection_id=conn_id, trigger="manual", status="running", started_at=datetime.utcnow()))
+    db.commit(); db.close()
+
+    enqueued = []
+    class FakeArq:
+        async def enqueue_job(self, *a):
+            enqueued.append(a)
+    async def fake_get_arq(app):
+        return FakeArq()
+    monkeypatch.setattr("app.routers.jobs._get_arq", fake_get_arq)
+
+    asyncio.run(sched_mod.run_scheduled_backup(SimpleNamespace(), conn_id, 1))
+
+    assert not enqueued  # 跳过,未投递
+    db = _session._SessionLocal()
+    scheduled = db.query(BackupRecord).filter(BackupRecord.trigger == "scheduled").all()
+    assert scheduled == []  # 未新建 scheduled 记录
+    db.close()
