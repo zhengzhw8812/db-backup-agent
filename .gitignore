@@ -35,6 +35,7 @@ Thumbs.db
 
 # Runtime data volume (mounted /data)
 data/
+data-verify/
 
 # Archive directory (development files only)
 archive/
