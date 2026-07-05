@@ -81,6 +81,73 @@ def test_unknown_id_returns_404(authed):
     assert authed.delete("/api/v1/connections/9999").status_code == 404
 
 
+def test_sqlite_rejects_path_traversal(authed):
+    # 绝对路径(数据目录之外)→ 拒绝,杜绝任意文件读
+    r = authed.post("/api/v1/connections", json={"name": "s", "type": "sqlite", "db_name": "/etc/shadow"})
+    assert r.status_code == 400
+    # 相对遍历 ../ 逃出数据目录 → 拒绝
+    r2 = authed.post("/api/v1/connections", json={"name": "s", "type": "sqlite", "db_name": "../evil.db"})
+    assert r2.status_code == 400
+
+
+def test_sqlite_accepts_path_inside_data_dir(authed):
+    # 相对路径(落在 data_dir 内)→ 允许
+    r = authed.post("/api/v1/connections", json={"name": "s", "type": "sqlite", "db_name": "mydb.sqlite"})
+    assert r.status_code == 201
+    assert r.json()["db_name"] == "mydb.sqlite"
+
+
+def test_update_connection_empty_password_keeps_existing(authed):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg", "password": "pw1"}).json()["id"]
+    # 表单重提交常见:password 传空串 → 不应清空已存密码
+    authed.put(f"/api/v1/connections/{cid}", json={"name": "renamed", "password": ""})
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    from app.main import app as fastapi_app
+    from app.services.connection_service import decrypt_password
+    crypto = fastapi_app.state.crypto
+    db = _session._SessionLocal()
+    try:
+        row = db.get(DbConnection, cid)
+        assert decrypt_password(row, crypto) == "pw1"  # 仍是旧密码
+    finally:
+        db.close()
+
+
+def test_connection_rejects_out_of_range_port(authed):
+    # 端口超范围 → schema 层 422(而非存入后连接时才失败)
+    assert authed.post("/api/v1/connections",
+                       json={"name": "c", "type": "pg", "port": 99999}).status_code == 422
+    assert authed.post("/api/v1/connections",
+                       json={"name": "c", "type": "pg", "port": 0}).status_code == 422
+
+
+def test_connection_test_success(authed, monkeypatch):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg"}).json()["id"]
+    class FakeAdapter:
+        def test(self, info, *, is_cancelled=None): pass
+    monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: FakeAdapter())
+    assert authed.post(f"/api/v1/connections/{cid}/test").json() == {"ok": True}
+
+
+def test_connection_test_failure_returns_400(authed, monkeypatch):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg"}).json()["id"]
+    class BadAdapter:
+        def test(self, info, *, is_cancelled=None): raise RuntimeError("password authentication failed")
+    monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: BadAdapter())
+    r = authed.post(f"/api/v1/connections/{cid}/test")
+    assert r.status_code == 400
+    assert "password authentication failed" in r.json()["detail"]
+
+
+def test_connection_test_unsupported_type(authed):
+    """Redis/Mongo 暂不支持测试 → 400 + 友好提示(不实际连库)。"""
+    cid = authed.post("/api/v1/connections", json={"name": "r", "type": "redis"}).json()["id"]
+    r = authed.post(f"/api/v1/connections/{cid}/test")
+    assert r.status_code == 400
+    assert "暂不支持" in r.json()["detail"]
+
+
 def test_update_preserves_other_fields_and_reencrypts(authed):
     cid = authed.post("/api/v1/connections", json={
         "name": "pg1", "type": "pg", "host": "h1", "port": 5432, "db_name": "d", "username": "u", "password": "pw1"
@@ -104,3 +171,33 @@ def test_update_preserves_other_fields_and_reencrypts(authed):
         assert decrypt_password(row, crypto) == "pw2"
     finally:
         db.close()
+
+
+def test_create_pg_connection_persists_db_names(authed):
+    body = {"name": "pg1", "type": "pg", "host": "h", "port": 5432,
+            "username": "u", "password": "secret", "db_names": ["app", "logs"]}
+    r = authed.post("/api/v1/connections", json=body)
+    assert r.status_code == 201
+    out = r.json()
+    assert out["db_names"] == ["app", "logs"]
+
+
+def test_list_db_names_falls_back_to_db_name(authed):
+    """旧连接(只存 db_name)的 ConnectionOut.db_names 应回退为 [db_name]。"""
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    db = _session._SessionLocal()
+    try:
+        db.add(DbConnection(name="old", type="pg", db_name="legacy"))
+        db.commit()
+    finally:
+        db.close()
+    r = authed.get("/api/v1/connections")
+    row = next(c for c in r.json() if c["name"] == "old")
+    assert row["db_names"] == ["legacy"]
+
+
+def test_update_connection_db_names(authed):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg", "db_names": ["a"]}).json()["id"]
+    r = authed.put(f"/api/v1/connections/{cid}", json={"db_names": ["a", "b"]})
+    assert r.json()["db_names"] == ["a", "b"]

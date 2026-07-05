@@ -1,5 +1,5 @@
 import json
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -10,10 +10,25 @@ from app.services import connection_service as svc
 router = APIRouter()
 
 
+def _db_names_of(c) -> list[str]:
+    """优先 db_names(JSON);为空回退到旧 db_name;再为空返回 []。"""
+    if c.db_names:
+        try:
+            names = json.loads(c.db_names)
+            if names:
+                return names
+        except (TypeError, ValueError):
+            pass
+    if c.db_name:
+        return [c.db_name]
+    return []
+
+
 def _serialize(c) -> ConnectionOut:
     return ConnectionOut(
         id=c.id, name=c.name, type=c.type, host=c.host, port=c.port,
-        db_name=c.db_name, username=c.username,
+        db_name=c.db_name, db_names=_db_names_of(c),
+        username=c.username,
         extra=json.loads(c.extra) if c.extra else None, created_at=c.created_at,
     )
 
@@ -41,3 +56,12 @@ def update(conn_id: int, payload: ConnectionUpdate, request: Request, db: Sessio
 @router.delete("/{conn_id}", status_code=204)
 def delete(conn_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
     svc.delete_connection(db, conn_id)
+
+
+@router.post("/{conn_id}/test")
+def test(conn_id: int, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    try:
+        svc.test_connection(db, request.app.state.crypto, conn_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True}
