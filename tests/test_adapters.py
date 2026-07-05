@@ -337,3 +337,73 @@ def test_all_adapters_registered():
     assert isinstance(get_adapter("mongo"), MongoAdapter)
     assert isinstance(get_adapter("redis"), RedisAdapter)
     assert isinstance(get_adapter("sqlite"), SqliteAdapter)
+
+
+def test_pg_list_databases_argv_and_parse(monkeypatch):
+    """list_databases:连维护库 postgres,查 pg_database;密码走 env;解析逐行库名。"""
+    a = PostgresAdapter()
+    info = ConnectionInfo(type="pg", host="h", port=5432, username="u", password="secret")
+    seen = {}
+
+    class OkProc:
+        returncode = 0
+        stderr = None
+        stdout = __import__("io").BytesIO(b"app\nlogs\nshop\n")
+        def wait(self, timeout=None): return 0
+
+    def fake_popen(argv, **kw):
+        seen["argv"] = argv
+        seen["env"] = kw.get("env")
+        return OkProc()
+
+    monkeypatch.setattr("app.adapters.base.subprocess.Popen", fake_popen)
+    names = a.list_databases(info)
+    assert names == ["app", "logs", "shop"]
+    joined = " ".join(seen["argv"])
+    assert "datname" in joined and "pg_database" in joined        # 查 pg_database
+    assert "-d" in seen["argv"] and "postgres" in seen["argv"]    # 连维护库 postgres
+    assert "secret" not in joined                                 # 密码不上 argv
+    assert seen["env"].get("PGPASSWORD") == "secret"             # 走 PGPASSWORD
+
+
+def test_pg_list_databases_falls_back_to_template1(monkeypatch):
+    """postgres 维护库连不上时,回退 template1;仍失败则抛 RuntimeError。"""
+    a = PostgresAdapter()
+    info = ConnectionInfo(type="pg", host="h", username="u", password="secret")
+    calls = []
+
+    class FailProc:
+        returncode = 1
+        stderr = __import__("io").BytesIO(b"connection refused")
+        stdout = __import__("io").BytesIO(b"")
+        def wait(self, timeout=None): return 1
+
+    class OkProc:
+        returncode = 0
+        stderr = None
+        stdout = __import__("io").BytesIO(b"onlydb\n")
+        def wait(self, timeout=None): return 0
+
+    def fake_popen(argv, **kw):
+        calls.append(argv)
+        return FailProc() if ("-d" in argv and "postgres" in argv) else OkProc()
+
+    monkeypatch.setattr("app.adapters.base.subprocess.Popen", fake_popen)
+    assert a.list_databases(info) == ["onlydb"]
+    assert any("template1" in c for c in calls)  # 回退到 template1
+
+
+def test_pg_list_databases_all_fail_raises(monkeypatch):
+    a = PostgresAdapter()
+    info = ConnectionInfo(type="pg", host="h", username="u", password="secret")
+
+    class FailProc:
+        returncode = 1
+        stderr = __import__("io").BytesIO(b"auth failed")
+        stdout = __import__("io").BytesIO(b"")
+        def wait(self, timeout=None): return 1
+
+    monkeypatch.setattr("app.adapters.base.subprocess.Popen", lambda *a, **k: FailProc())
+    with pytest.raises(RuntimeError) as ei:
+        a.list_databases(info)
+    assert "维护库" in str(ei.value)
