@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { NCard, NGrid, NGridItem, NStatistic, NSpin } from 'naive-ui'
+import { NCard, NGrid, NGridItem, NStatistic, NSpin, useMessage } from 'naive-ui'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -14,6 +14,7 @@ use([CanvasRenderer, BarChart, PieChart, TooltipComponent, LegendComponent, Grid
 const stats = ref<DashboardStats | null>(null)
 const trends = ref<DashboardTrends | null>(null)
 const loading = ref(true)
+const msg = useMessage()
 
 function fmtBytes(n: number) {
   if (!n) return '0 B'
@@ -53,6 +54,8 @@ async function load() {
     const [s, t] = await Promise.all([api.getStats(), api.getTrends()])
     stats.value = s.data
     trends.value = t.data
+  } catch (e: any) {
+    msg.error('加载仪表盘数据失败')
   } finally {
     loading.value = false
   }

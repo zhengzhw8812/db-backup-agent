@@ -31,7 +31,8 @@ async function load() {
   try {
     const [s, c] = await Promise.all([schedApi.listSchedules(), connApi.listConnections()])
     data.value = s.data; conns.value = c.data
-  } finally { loading.value = false }
+  } catch (e: any) { msg.error('加载计划列表失败') }
+  finally { loading.value = false }
 }
 
 function openAdd() { editing.value = null; form.value = { cron_expr: '0 2 * * *', enabled: true, retention_days: 7 }; show.value = true }
@@ -51,7 +52,10 @@ async function toggle(row: Schedule, val: boolean) {
   try { await schedApi.updateSchedule(row.id, { enabled: val }); row.enabled = val; await load() }
   catch (e: any) { msg.error('更新失败') }
 }
-async function remove(id: number) { await schedApi.deleteSchedule(id); msg.success('已删除'); await load() }
+async function remove(id: number) {
+  try { await schedApi.deleteSchedule(id); msg.success('已删除'); await load() }
+  catch (e: any) { msg.error(e.response?.data?.detail || '删除失败') }
+}
 
 const columns: DataTableColumns<Schedule> = [
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
