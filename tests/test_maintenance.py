@@ -1,10 +1,13 @@
+import json
 from datetime import datetime
+
+from sqlalchemy import text
 
 from app.db.session import init_engine, create_all
 from app.db import session as _session
 import app.db.models  # noqa
 from app.db.models import DbConnection, BackupRecord, RestoreRecord
-from app.services.maintenance import reap_stale_running
+from app.services.maintenance import reap_stale_running, migrate_schema
 
 
 def test_reap_marks_stale_running_as_failed(tmp_path):
@@ -39,28 +42,72 @@ def test_reap_noop_when_nothing_stale(tmp_path):
     db.close()
 
 
-def test_migrate_schema_backfills_db_names(tmp_path, monkeypatch):
+def test_migrate_schema_backfills_db_names(tmp_path):
     """旧连接(只有 db_name,无 db_names)启动迁移后应回填 db_names=['<db_name>']。"""
-    from app.db import session as _session
-    from app.db.session import init_engine, create_all
-    from app.db.models import DbConnection
-    from app.core.crypto import Crypto
-    from cryptography.fernet import Fernet
-    from app.services.maintenance import migrate_schema
-    import json
-
     init_engine(f"sqlite:///{tmp_path/'m.db'}")
     create_all()
     db = _session._SessionLocal()
     try:
-        crypto = Crypto(Fernet.generate_key())
-        c = DbConnection(name="legacy", type="pg", host="h", port=5432,
-                         db_name="legacydb", username="u",
-                         password_enc=crypto.encrypt("pw"), db_names=None)
+        c = DbConnection(name="legacy", type="pg", db_name="legacydb")
         db.add(c); db.commit(); db.refresh(c)
 
         migrate_schema(db)
         db.refresh(c)
+        assert json.loads(c.db_names) == ["legacydb"]
+
+        # 幂等:再跑一次不变
+        migrate_schema(db)
+        db.refresh(c)
+        assert json.loads(c.db_names) == ["legacydb"]
+    finally:
+        db.close()
+
+
+def test_migrate_schema_preserves_existing_db_names(tmp_path):
+    """已有 db_names 的连接不应被回填覆盖。"""
+    init_engine(f"sqlite:///{tmp_path/'p.db'}")
+    create_all()
+    db = _session._SessionLocal()
+    try:
+        keep = DbConnection(name="keep", type="pg", db_names=json.dumps(["already"]))
+        db.add(keep); db.commit(); db.refresh(keep)
+
+        migrate_schema(db)
+        db.refresh(keep)
+        assert json.loads(keep.db_names) == ["already"]
+    finally:
+        db.close()
+
+
+def test_migrate_schema_adds_missing_columns(tmp_path):
+    """模拟旧库(缺新列):migrate_schema 应补上 db_connections.db_names 与 backup_records.db_name。"""
+    init_engine(f"sqlite:///{tmp_path/'legacy.db'}")
+    create_all()
+    db = _session._SessionLocal()
+    try:
+        # 旧连接只有 db_name(先入库,再 DROP——ORM INSERT 列表固定含 db_names)
+        db.add(DbConnection(name="legacy", type="pg", db_name="legacydb"))
+        db.commit()
+
+        # 模拟升级前:删掉两个新列(SQLite >=3.35 支持 DROP COLUMN)
+        db.execute(text("ALTER TABLE db_connections DROP COLUMN db_names"))
+        db.execute(text("ALTER TABLE backup_records DROP COLUMN db_name"))
+        db.commit()
+        db.expire_all()  # 丢弃身份映射里的缓存,强制后续 SELECT 重新读库
+
+        # 补列前应确实不存在
+        cols_conn_pre = [r[1] for r in db.execute(text("PRAGMA table_info(db_connections)"))]
+        cols_rec_pre = [r[1] for r in db.execute(text("PRAGMA table_info(backup_records)"))]
+        assert "db_names" not in cols_conn_pre
+        assert "db_name" not in cols_rec_pre
+
+        migrate_schema(db)  # 应补列 + 回填
+
+        cols_conn = [r[1] for r in db.execute(text("PRAGMA table_info(db_connections)"))]
+        cols_rec = [r[1] for r in db.execute(text("PRAGMA table_info(backup_records)"))]
+        assert "db_names" in cols_conn
+        assert "db_name" in cols_rec
+        c = db.query(DbConnection).filter_by(name="legacy").one()
         assert json.loads(c.db_names) == ["legacydb"]
     finally:
         db.close()

@@ -16,7 +16,6 @@ from app.routers import settings as settings_router
 async def lifespan(app: FastAPI):
     # 启动时补齐新列/回填,再清理上次崩溃残留的 running 记录
     from app.services.maintenance import migrate_schema, reap_stale_running
-    from app.db.session import get_db
     db = next(get_db())
     try:
         migrate_schema(db)
