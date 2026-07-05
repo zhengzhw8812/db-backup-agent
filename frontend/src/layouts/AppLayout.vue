@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NSpace, NConfigProvider } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NSpace } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 import { useTheme } from '../composables/useTheme'
 
 const auth = useAuthStore()
 const router = useRouter()
-const { theme, overrides, dark, toggle } = useTheme()
+const { dark, toggle } = useTheme()
 
 const menuOptions = [
   { label: '仪表盘', key: 'dashboard' },
@@ -25,26 +25,24 @@ async function logout() { await auth.doLogout(); router.push('/login') }
 </script>
 
 <template>
-  <n-config-provider :theme="theme" :theme-overrides="overrides">
-    <n-layout has-sider style="height:100vh">
-      <n-layout-sider bordered :width="220" content-style="padding:12px">
-        <div class="logo">📦 DB Backup</div>
-        <n-menu :options="menuOptions" :value="$route.path.slice(1)" @update:value="onSelect" />
-      </n-layout-sider>
-      <n-layout>
-        <n-layout-header bordered style="height:56px;padding:0 20px;display:flex;align-items:center;justify-content:flex-end">
-          <n-space align="center">
-            <n-button quaternary @click="toggle">{{ dark ? '🌞 浅色' : '🌙 深色' }}</n-button>
-            <span style="opacity:.7">{{ auth.user?.username }}</span>
-            <n-button quaternary @click="logout">登出</n-button>
-          </n-space>
-        </n-layout-header>
-        <n-layout-content content-style="padding:24px;background:#f8fafc">
-          <router-view />
-        </n-layout-content>
-      </n-layout>
+  <n-layout has-sider style="height:100vh">
+    <n-layout-sider bordered :width="220" content-style="padding:12px">
+      <div class="logo">📦 DB Backup</div>
+      <n-menu :options="menuOptions" :value="$route.path.slice(1)" @update:value="onSelect" />
+    </n-layout-sider>
+    <n-layout>
+      <n-layout-header bordered style="height:56px;padding:0 20px;display:flex;align-items:center;justify-content:flex-end">
+        <n-space align="center">
+          <n-button quaternary @click="toggle">{{ dark ? '🌞 浅色' : '🌙 深色' }}</n-button>
+          <span style="opacity:.7">{{ auth.user?.username }}</span>
+          <n-button quaternary @click="logout">登出</n-button>
+        </n-space>
+      </n-layout-header>
+      <n-layout-content content-style="padding:24px;background:#f8fafc">
+        <router-view />
+      </n-layout-content>
     </n-layout>
-  </n-config-provider>
+  </n-layout>
 </template>
 
 <style scoped>

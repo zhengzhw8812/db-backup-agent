@@ -6,6 +6,7 @@ import type { NotificationSettings } from '../api/settings'
 
 const msg = useMessage()
 const loading = ref(false)
+const loaded = ref(false)  // 仅加载成功后才允许保存,避免用默认值覆盖真实配置
 const f = ref<NotificationSettings>({
   email_enabled: false, smtp_host: null, smtp_port: 465, smtp_ssl: true, smtp_starttls: false,
   smtp_user: null, smtp_password: null, smtp_from: null, recipients: null,
@@ -14,9 +15,14 @@ const f = ref<NotificationSettings>({
 })
 
 async function load() {
-  const { data } = await setApi.getNotifications()
-  // 读回时密码/secret 为空(后端不回传),保留空以免覆盖
-  f.value = { ...data, smtp_password: null, wechat_secret: null }
+  try {
+    const { data } = await setApi.getNotifications()
+    // 读回时密码/secret 为空(后端不回传),保留空以免覆盖
+    f.value = { ...data, smtp_password: null, wechat_secret: null }
+    loaded.value = true
+  } catch (e: any) {
+    msg.error('加载通知配置失败,请刷新重试')
+  }
 }
 async function save() {
   loading.value = true
@@ -74,6 +80,6 @@ onMounted(load)
       </n-form>
     </n-card>
 
-    <n-button type="primary" :loading="loading" @click="save">保存设置</n-button>
+    <n-button type="primary" :loading="loading" :disabled="!loaded" @click="save">保存设置</n-button>
   </n-space>
 </template>

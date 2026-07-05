@@ -21,10 +21,12 @@ const selBackup = ref<number | null>(null)
 const destForm = ref({ name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true })
 
 async function load() {
-  const [d, t, c, b] = await Promise.all([cloudApi.listDestinations(), cloudApi.listTargets(), connApi.listConnections(), bkApi.listBackups()])
-  dests.value = d.data; targets.value = t.data
-  connOptions.value = c.data.map(x => ({ label: `${x.name} (${x.type})`, value: x.id }))
-  backupOptions.value = b.data.filter(x => x.status === 'success').map(x => ({ label: `#${x.id}`, value: x.id }))
+  try {
+    const [d, t, c, b] = await Promise.all([cloudApi.listDestinations(), cloudApi.listTargets(), connApi.listConnections(), bkApi.listBackups()])
+    dests.value = d.data; targets.value = t.data
+    connOptions.value = c.data.map(x => ({ label: `${x.name} (${x.type})`, value: x.id }))
+    backupOptions.value = b.data.filter(x => x.status === 'success').map(x => ({ label: `#${x.id}`, value: x.id }))
+  } catch (e: any) { msg.error('加载云同步数据失败') }
 }
 async function saveDest() {
   try {
@@ -37,13 +39,21 @@ async function testDest(id: number) {
   try { await cloudApi.testDestination(id); msg.success('连接成功') }
   catch (e: any) { msg.error(e.response?.data?.detail || '连接失败') }
 }
-async function rmDest(id: number) { await cloudApi.deleteDestination(id); msg.success('已删除'); await load() }
+async function rmDest(id: number) {
+  try { await cloudApi.deleteDestination(id); msg.success('已删除'); await load() }
+  catch (e: any) { msg.error(e.response?.data?.detail || '删除失败') }
+}
 async function addTarget() {
   if (selConn.value == null || selDest.value == null) { msg.warning('请选连接和云目标'); return }
-  await cloudApi.createTarget({ connection_id: selConn.value, cloud_destination_id: selDest.value })
-  msg.success('已添加'); showTarget.value = false; await load()
+  try {
+    await cloudApi.createTarget({ connection_id: selConn.value, cloud_destination_id: selDest.value })
+    msg.success('已添加'); showTarget.value = false; await load()
+  } catch (e: any) { msg.error(e.response?.data?.detail || '添加失败') }
 }
-async function rmTarget(id: number) { await cloudApi.deleteTarget(id); msg.success('已删除'); await load() }
+async function rmTarget(id: number) {
+  try { await cloudApi.deleteTarget(id); msg.success('已删除'); await load() }
+  catch (e: any) { msg.error(e.response?.data?.detail || '删除失败') }
+}
 async function doSync() {
   if (selBackup.value == null) { msg.warning('请选备份'); return }
   try { await cloudApi.syncRun(selBackup.value); msg.success('同步任务已提交') }

@@ -38,8 +38,10 @@ const canSubmit = computed(() => selectedBackup.value != null && selectedConn.va
 const confirmMatches = computed(() => targetConn.value != null && confirmText.value === targetConn.value.name)
 
 async function load() {
-  const [b, c, r] = await Promise.all([bkApi.listBackups(), connApi.listConnections(), rsApi.listRestores()])
-  backups.value = b.data; conns.value = c.data; restores.value = r.data
+  try {
+    const [b, c, r] = await Promise.all([bkApi.listBackups(), connApi.listConnections(), rsApi.listRestores()])
+    backups.value = b.data; conns.value = c.data; restores.value = r.data
+  } catch (e: any) { msg.error('加载恢复数据失败') }
 }
 
 function openConfirm() {
@@ -73,9 +75,11 @@ function poll() {
 
 async function cancelCurrent() {
   if (currentRestoreId.value == null) return
-  await rsApi.cancelRestore(currentRestoreId.value)
-  msg.success('已请求取消')
-  await load()
+  try {
+    await rsApi.cancelRestore(currentRestoreId.value)
+    msg.success('已请求取消')
+    await load()
+  } catch (e: any) { msg.error(e.response?.data?.detail || '取消失败') }
 }
 
 const STAGES = ['verify', 'decompress', 'restore', 'success']
@@ -154,7 +158,7 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
           <n-button size="small" :disabled="['success','failed','cancelled'].includes(status)" @click="cancelCurrent">取消</n-button>
         </n-space>
         <div class="log">
-          <div v-for="(e, i) in events" :key="i">
+          <div v-for="e in events" :key="e.id">
             • {{ e.stage }} <span v-if="e.detail" style="opacity:.6">— {{ e.detail }}</span>
           </div>
         </div>

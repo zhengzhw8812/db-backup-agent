@@ -10,6 +10,10 @@ const msg = useMessage()
 const username = ref(''); const password = ref(''); const loading = ref(false)
 
 async function submit() {
+  if (!username.value.trim() || !password.value) {
+    msg.warning('请输入用户名和密码')
+    return
+  }
   loading.value = true
   try {
     await auth.doLogin(username.value, password.value)
