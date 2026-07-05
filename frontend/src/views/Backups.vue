@@ -21,6 +21,7 @@ const jobs = ref<Job[]>([])
 const showProgress = ref(false)
 const { events, status, subscribe } = useJobStream()
 let pollTimer: number | undefined
+let lastIds: number[] = []  // 本次 runNow 触发的 record_ids;poll 直到其中没有 running 才停
 
 const connOptions = () => conns.value.map(c => ({ label: `${c.name} (${c.type})`, value: c.id }))
 function connLabel(id: number) { return conns.value.find(c => c.id === id)?.name ?? `#${id}` }
@@ -46,6 +47,7 @@ async function runNow() {
   try {
     const r = await jobsApi.runBackup(selectedConn.value)
     const ids = r.data.record_ids || []
+    lastIds = ids
     showProgress.value = true
     if (ids.length) subscribe(ids[0])  // v1:进度抽屉跟第一条;其余靠下方 poll 刷新
     msg.success(`已创建 ${ids.length} 条备份任务`)
@@ -56,7 +58,8 @@ function poll() {
   if (pollTimer) window.clearInterval(pollTimer)
   pollTimer = window.setInterval(async () => {
     await load()
-    if (['success', 'failed', 'cancelled'].includes(status.value)) {
+    // 多库备份:本批触发的记录都不再 running 才停(单库时 lastIds 仅 1 条,行为不变)
+    if (!jobs.value.some(j => lastIds.includes(j.id))) {
       window.clearInterval(pollTimer); pollTimer = undefined
     }
   }, 2000)
