@@ -14,32 +14,35 @@ from app.services.notifications import notify_backup_result
 from app.workers.progress import ProgressReporter
 
 
-def _run_backup_sync(ctx, connection_id: int, record_id: int) -> dict:
+def _run_backup_sync(ctx, connection_id: int, record_ids: list[int]) -> dict:
     _, fernet_key = bootstrap_keys()
     crypto = Crypto(fernet_key.encode("ascii"))
     db = _session._SessionLocal()
+    results = []
     try:
         conn = db.get(DbConnection, connection_id)
         if conn is None:
             raise ValueError(f"连接不存在: {connection_id}")
-        reporter = ProgressReporter(record_id)
-        rec = run_backup(db, crypto, conn, reporter, ctx["backup_dir"], record_id)
-        if rec.status == "success":
+        for rid in record_ids:
+            reporter = ProgressReporter(rid)
+            rec = run_backup(db, crypto, conn, reporter, ctx["backup_dir"], rid)
+            if rec.status == "success":
+                try:
+                    run_retention(db, conn, ctx["backup_dir"])
+                except Exception:
+                    pass  # 保留清理失败不影响备份结果
             try:
-                run_retention(db, conn, ctx["backup_dir"])
+                notify_backup_result(db, crypto, conn, rec)
             except Exception:
-                pass  # 保留清理失败不影响备份结果
-        try:
-            notify_backup_result(db, crypto, conn, rec)
-        except Exception:
-            pass  # 通知失败不影响备份结果
-        return {"record_id": rec.id, "status": rec.status}
+                pass  # 通知失败不影响备份结果
+            results.append({"record_id": rec.id, "status": rec.status})
+        return {"results": results}
     finally:
         db.close()
 
 
-async def backup_job(ctx, connection_id: int, record_id: int) -> dict:
-    return await asyncio.to_thread(_run_backup_sync, ctx, connection_id, record_id)
+async def backup_job(ctx, connection_id: int, record_ids: list[int]) -> dict:
+    return await asyncio.to_thread(_run_backup_sync, ctx, connection_id, record_ids)
 
 
 def _run_restore_sync(ctx, backup_record_id: int, target_connection_id: int, restore_record_id: int) -> dict:

@@ -10,7 +10,7 @@ from app.workers.jobs import _run_backup_sync
 
 class FakeAdapter:
     type = "pg"
-    def dump(self, info, dest_path):
+    def dump(self, info, dest_path, *, is_cancelled=None):
         with open(dest_path, "wb") as f:
             f.write(b"-- dump\n")
 
@@ -38,9 +38,9 @@ def test_run_backup_sync_wires_service(monkeypatch, tmp_path):
     db.close()
 
     ctx = {"backup_dir": bdir}
-    result = _run_backup_sync(ctx, conn_id, record_id)
-    assert result["status"] == "success"
-    assert result["record_id"] == record_id
+    result = _run_backup_sync(ctx, conn_id, [record_id])
+    assert result["results"][0]["status"] == "success"
+    assert result["results"][0]["record_id"] == record_id
 
 
 def test_backup_worker_runs_retention_and_notify(monkeypatch, tmp_path):
@@ -63,7 +63,7 @@ def test_backup_worker_runs_retention_and_notify(monkeypatch, tmp_path):
     db.add(record); db.commit(); db.refresh(record)
     conn_id, record_id = conn.id, record.id
     db.close()
-    result = _run_backup_sync({"backup_dir": bdir}, conn_id, record_id)
-    assert result["status"] == "success"
+    result = _run_backup_sync({"backup_dir": bdir}, conn_id, [record_id])
+    assert result["results"][0]["status"] == "success"
     assert calls.get("retention") is True
     assert calls.get("notify") is True
