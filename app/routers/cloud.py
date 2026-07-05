@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import config
 from app.db.session import get_db
-from app.db.models import CloudDestination, SyncTarget, BackupRecord
+from app.db.models import CloudDestination, SyncTarget, BackupRecord, DbConnection
 from app.deps import get_current_account
 from app.schemas.cloud import (
     CloudDestinationCreate, CloudDestinationOut,
     SyncTargetCreate, SyncTargetOut, SyncRunRequest,
 )
-from app.cloud.base import get_storage, CloudConfig
+from app.cloud.base import get_storage, CloudConfig, _REGISTRY as CLOUD_REGISTRY
 
 router = APIRouter()
 
@@ -19,7 +20,8 @@ router = APIRouter()
 async def _get_arq(app):
     if getattr(app.state, "arq", None) is None:
         from arq import create_pool
-        app.state.arq = await create_pool(config.settings.redis_url)
+        from arq.connections import RedisSettings
+        app.state.arq = await create_pool(RedisSettings.from_dsn(config.settings.redis_url))
     return app.state.arq
 
 
@@ -33,6 +35,8 @@ def list_destinations(db: Session = Depends(get_db), _=Depends(get_current_accou
 @router.post("/cloud-destinations", response_model=CloudDestinationOut, status_code=201)
 def create_destination(payload: CloudDestinationCreate, request: Request,
                        db: Session = Depends(get_db), _=Depends(get_current_account)):
+    if payload.provider not in CLOUD_REGISTRY:  # 提交即校验,避免存了非法 provider 到同步时才报错
+        raise HTTPException(status_code=400, detail=f"不支持的云存储: {payload.provider}")
     crypto = request.app.state.crypto
     d = CloudDestination(
         name=payload.name, provider=payload.provider, endpoint=payload.endpoint,
@@ -83,9 +87,17 @@ def list_targets(db: Session = Depends(get_db), _=Depends(get_current_account)):
 def create_target(payload: SyncTargetCreate, db: Session = Depends(get_db), _=Depends(get_current_account)):
     if db.get(CloudDestination, payload.cloud_destination_id) is None:
         raise HTTPException(status_code=404, detail="云目标不存在")
+    if db.get(DbConnection, payload.connection_id) is None:
+        raise HTTPException(status_code=404, detail="连接不存在")
     t = SyncTarget(connection_id=payload.connection_id,
                    cloud_destination_id=payload.cloud_destination_id, enabled=payload.enabled)
-    db.add(t); db.commit(); db.refresh(t)
+    db.add(t)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="该同步规则已存在")
+    db.refresh(t)
     return t
 
 

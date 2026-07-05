@@ -1,8 +1,7 @@
 from __future__ import annotations
-import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -11,7 +10,9 @@ from app.db.session import get_db
 from app.db.models import BackupRecord, DbConnection, RestoreRecord
 from app.deps import get_current_account
 from app.schemas.restore import RestoreRequest, RestoreRunResponse, RestoreOut
+from app.services.locks import has_running_restore
 from app.workers.progress import request_cancel
+from app.routers._sse import event_stream
 
 router = APIRouter()
 
@@ -20,7 +21,8 @@ async def _get_arq(app):
     """惰性创建 arq 连接池(测试里可直接覆盖 app.state.arq)。"""
     if getattr(app.state, "arq", None) is None:
         from arq import create_pool
-        app.state.arq = await create_pool(config.settings.redis_url)
+        from arq.connections import RedisSettings
+        app.state.arq = await create_pool(RedisSettings.from_dsn(config.settings.redis_url))
     return app.state.arq
 
 
@@ -35,17 +37,28 @@ async def run_restore_route(payload: RestoreRequest, request: Request,
     target = db.get(DbConnection, payload.target_connection_id)
     if target is None:
         raise HTTPException(status_code=404, detail="目标连接不存在")
+    # 互斥:同一目标连接已有恢复在运行 → 拒绝
+    if has_running_restore(db, target.id) is not None:
+        raise HTTPException(status_code=409, detail="该目标连接已有恢复在运行")
     record = RestoreRecord(backup_record_id=backup.id, target_connection_id=target.id,
                            status="running", started_at=datetime.utcnow())
     db.add(record); db.commit(); db.refresh(record)
-    arq = await _get_arq(request.app)
-    await arq.enqueue_job("restore_job", backup.id, target.id, record.id)
+    try:
+        arq = await _get_arq(request.app)
+        await arq.enqueue_job("restore_job", backup.id, target.id, record.id)
+    except Exception:
+        record.status = "failed"
+        record.error = "投递到队列失败"
+        record.finished_at = datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=503, detail="投递到队列失败,请稍后重试")
     return RestoreRunResponse(record_id=record.id, status=record.status)
 
 
 @router.get("/restore", response_model=list[RestoreOut])
-def list_restores(db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return db.query(RestoreRecord).order_by(RestoreRecord.id.desc()).all()
+def list_restores(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                  db: Session = Depends(get_db), _=Depends(get_current_account)):
+    return db.query(RestoreRecord).order_by(RestoreRecord.id.desc()).offset(offset).limit(limit).all()
 
 
 @router.post("/restore/{record_id}/cancel")
@@ -58,25 +71,7 @@ def cancel_restore(record_id: int, db: Session = Depends(get_db), _=Depends(get_
 
 
 @router.get("/restore/{record_id}/events")
-async def restore_events(record_id: int, _=Depends(get_current_account)):
-    from app.redis_client import get_async_redis
-    r = get_async_redis()
-    pubsub = r.pubsub()
-    await pubsub.subscribe(f"restore:{record_id}")
-
-    async def gen():
-        try:
-            async for msg in pubsub.listen():
-                if msg.get("type") == "message":
-                    data = msg["data"].decode() if isinstance(msg["data"], bytes) else msg["data"]
-                    yield f"data: {data}\n\n"
-                    try:
-                        if json.loads(data).get("stage") in ("success", "failed", "cancelled"):
-                            return
-                    except Exception:
-                        pass
-        finally:
-            await pubsub.unsubscribe(f"restore:{record_id}")
-            await pubsub.close()
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
+async def restore_events(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    rec = db.get(RestoreRecord, record_id)
+    initial = rec.status if rec else None
+    return StreamingResponse(event_stream(record_id, "restore", initial), media_type="text/event-stream")

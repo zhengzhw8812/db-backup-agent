@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import smtplib
+import time
 import urllib.parse
 import urllib.request
 from email.mime.text import MIMEText
@@ -11,7 +12,13 @@ from app.db.models import DbConnection, BackupRecord, NotificationConfig
 from app.core.crypto import Crypto
 
 
-def _send_email(cfg: NotificationConfig, subject: str, body: str) -> None:
+# 企业微信 access_token 进程级缓存:corp_id -> (token, 过期 epoch)。
+# 避免每次发送都重新拉取 token(额外往返 + 触发频率限制)。
+_wechat_token_cache: dict[str, tuple[str, float]] = {}
+_TOKEN_REFRESH_MARGIN = 300  # 提前 5 分钟视为过期,留刷新余量
+
+
+def _send_email(cfg: NotificationConfig, subject: str, body: str, password: str) -> None:
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = cfg.smtp_from or ""
@@ -25,24 +32,31 @@ def _send_email(cfg: NotificationConfig, subject: str, body: str) -> None:
             server.starttls()
     try:
         if cfg.smtp_user:
-            server.login(cfg.smtp_user, cfg.smtp_password_enc or "")
+            server.login(cfg.smtp_user, password or "")
         server.sendmail(cfg.smtp_from, recipients, msg.as_string())
     finally:
         server.quit()
 
 
 def _wechat_token(corp_id: str, secret: str) -> str:
+    now = time.time()
+    cached = _wechat_token_cache.get(corp_id)
+    if cached and cached[1] > now + _TOKEN_REFRESH_MARGIN:
+        return cached[0]
     url = (f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?"
            f"corpid={urllib.parse.quote(corp_id)}&corpsecret={urllib.parse.quote(secret)}")
     with urllib.request.urlopen(url, timeout=10) as resp:
         data = json.loads(resp.read())
     if data.get("errcode"):
         raise RuntimeError(f"企业微信 token 失败: {data}")
-    return data["access_token"]
+    token = data["access_token"]
+    expires_in = int(data.get("expires_in", 7200) or 7200)
+    _wechat_token_cache[corp_id] = (token, now + expires_in)
+    return token
 
 
-def _send_wechat(cfg: NotificationConfig, content: str) -> None:
-    token = _wechat_token(cfg.wechat_corp_id, cfg.wechat_secret_enc or "")
+def _send_wechat(cfg: NotificationConfig, content: str, secret: str) -> None:
+    token = _wechat_token(cfg.wechat_corp_id, secret or "")
     url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
     body = json.dumps({"touser": "@all", "msgtype": "text",
                        "agentid": int(cfg.wechat_agent_id), "text": {"content": content}}).encode()
@@ -73,19 +87,16 @@ def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record
     sent = {"email": False, "wechat": False}
     if cfg.email_enabled:
         try:
-            # 解出 SMTP 密码附到 cfg(发送函数读 _enc 字段——此处先解密回填,避免改 _send_email 签名)
-            if cfg.smtp_password_enc:
-                # 用临时属性传明文密码:_send_email 读 smtp_password_enc,故直接解密覆写
-                cfg.smtp_password_enc = crypto.decrypt(cfg.smtp_password_enc)
-            _send_email(cfg, subject, body)
+            # 解密到局部变量传入,绝不回写到 ORM *_enc 列(否则一旦 commit 会把明文落库)
+            pw = crypto.decrypt(cfg.smtp_password_enc) if cfg.smtp_password_enc else ""
+            _send_email(cfg, subject, body, pw)
             sent["email"] = True
         except Exception:
             sent["email"] = False
     if cfg.wechat_enabled:
         try:
-            if cfg.wechat_secret_enc:
-                cfg.wechat_secret_enc = crypto.decrypt(cfg.wechat_secret_enc)
-            _send_wechat(cfg, body)
+            secret = crypto.decrypt(cfg.wechat_secret_enc) if cfg.wechat_secret_enc else ""
+            _send_wechat(cfg, body, secret)
             sent["wechat"] = True
         except Exception:
             sent["wechat"] = False

@@ -11,7 +11,7 @@ def ensure_account(db: Session, username: str, password: str) -> Account:
     acc = get_account(db)
     if acc is not None:
         return acc
-    acc = Account(username=username, password_hash=hash_password(password), totp_enabled=False)
+    acc = Account(username=username, password_hash=hash_password(password))
     db.add(acc)
     db.commit()
     db.refresh(acc)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.deps import get_current_account
@@ -17,7 +17,12 @@ def list_(db: Session = Depends(get_db), _=Depends(get_current_account)):
 @router.post("/schedules", response_model=ScheduleOut, status_code=201)
 def create(payload: ScheduleCreate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
     s = svc.create_schedule(db, payload)
-    request.app.state.scheduler.upsert(s)
+    try:
+        request.app.state.scheduler.upsert(s)
+    except Exception:
+        # 调度注册失败 → 回滚刚建的记录,避免"存在但永不触发"的幽灵计划
+        svc.delete_schedule(db, s.id)
+        raise HTTPException(status_code=500, detail="调度注册失败")
     s.next_run_at = request.app.state.scheduler.next_run_at(s.id)
     db.commit(); db.refresh(s)
     return s
@@ -26,7 +31,11 @@ def create(payload: ScheduleCreate, request: Request, db: Session = Depends(get_
 @router.put("/schedules/{sid}", response_model=ScheduleOut)
 def update(sid: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
     s = svc.update_schedule(db, sid, payload)
-    request.app.state.scheduler.upsert(s)
+    try:
+        request.app.state.scheduler.upsert(s)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="调度注册失败")
     s.next_run_at = request.app.state.scheduler.next_run_at(s.id)
     db.commit(); db.refresh(s)
     return s

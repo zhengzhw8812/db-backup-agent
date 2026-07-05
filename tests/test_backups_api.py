@@ -56,3 +56,12 @@ def test_traversal_rejected(authed):
     rec.file_path = "../../etc/passwd"
     db.commit(); db.close()
     assert authed.get(f"/api/v1/backups/{rid}/download").status_code == 404
+
+
+def test_list_pagination(authed):
+    for _ in range(3):
+        _make_record()
+    page1 = authed.get("/api/v1/backups?limit=2&offset=0").json()
+    page2 = authed.get("/api/v1/backups?limit=2&offset=2").json()
+    assert len(page1) == 2
+    assert len(page2) == 1  # 共 3 条,第二页只剩 1 条

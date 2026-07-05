@@ -38,3 +38,25 @@ def test_create_list_update_delete(authed):
 def test_create_rejects_unknown_connection(authed):
     r = authed.post("/api/v1/schedules", json={"connection_id": 9999, "cron_expr": "0 2 * * *"})
     assert r.status_code == 400
+
+
+def test_create_rejects_invalid_cron(authed):
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    conn_id = _session._SessionLocal().query(DbConnection).first().id
+    # 5 字段但语义非法(周 8)→ 通过 schema 正则,被服务层 APScheduler 校验拒绝
+    r = authed.post("/api/v1/schedules", json={"connection_id": conn_id, "cron_expr": "0 2 * * 8"})
+    assert r.status_code == 400
+    # 合法 cron 仍可创建
+    assert authed.post("/api/v1/schedules",
+                       json={"connection_id": conn_id, "cron_expr": "0 2 * * *"}).status_code == 201
+
+
+def test_update_rejects_invalid_cron(authed):
+    from app.db import session as _session
+    from app.db.models import DbConnection
+    conn_id = _session._SessionLocal().query(DbConnection).first().id
+    sid = authed.post("/api/v1/schedules",
+                      json={"connection_id": conn_id, "cron_expr": "0 2 * * *"}).json()["id"]
+    r = authed.put(f"/api/v1/schedules/{sid}", json={"cron_expr": "*/0 * * * *"})
+    assert r.status_code == 400

@@ -1,19 +1,25 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
-from sqlalchemy import func, select
+from sqlalchemy import func, select, case
 from sqlalchemy.orm import Session
 from app.db.models import BackupRecord, DbConnection
 
 
 def stats(db: Session) -> dict:
-    total = db.query(func.count(BackupRecord.id)).scalar() or 0
-    success = db.query(func.count(BackupRecord.id)).filter(BackupRecord.status == "success").scalar() or 0
-    failed = db.query(func.count(BackupRecord.id)).filter(BackupRecord.status == "failed").scalar() or 0
-    running = db.query(func.count(BackupRecord.id)).filter(BackupRecord.status == "running").scalar() or 0
-    storage = db.query(func.coalesce(func.sum(BackupRecord.size), 0)).filter(BackupRecord.status == "success").scalar() or 0
-    rate = round(success / total, 4) if total else 0.0
+    # 一次聚合取出全部计数 + 成功存储总量(原实现 5 次全表扫描)
+    row = db.query(
+        func.count(BackupRecord.id),
+        func.coalesce(func.sum(case((BackupRecord.status == "success", 1), else_=0)), 0),
+        func.coalesce(func.sum(case((BackupRecord.status == "failed", 1), else_=0)), 0),
+        func.coalesce(func.sum(case((BackupRecord.status == "running", 1), else_=0)), 0),
+        func.coalesce(func.sum(case((BackupRecord.status == "success", BackupRecord.size), else_=0)), 0),
+    ).one()
+    total, success, failed, running, storage = (int(v or 0) for v in row)
+    # 成功率分母只计终态(success+failed),不受 running/cancelled 影响
+    denom = success + failed
+    rate = round(success / denom, 4) if denom else 0.0
     return {"total": total, "success": success, "failed": failed,
-            "success_rate": rate, "storage_bytes": int(storage), "running": running}
+            "success_rate": rate, "storage_bytes": storage, "running": running}
 
 
 def trends(db: Session, days: int = 30) -> dict:

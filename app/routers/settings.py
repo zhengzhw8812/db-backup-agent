@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
@@ -21,12 +22,21 @@ def _to_out(cfg: NotificationConfig) -> NotificationSettingsOut:
     )
 
 
+def _defaults_out() -> NotificationSettingsOut:
+    """未配置时返回全默认视图——不写库(GET 保持幂等/只读)。"""
+    return NotificationSettingsOut(
+        email_enabled=False, smtp_host=None, smtp_port=None, smtp_ssl=False,
+        smtp_starttls=True, smtp_user=None, smtp_from=None, recipients=None,
+        wechat_enabled=False, wechat_corp_id=None, wechat_agent_id=None,
+        notify_on_success=True, notify_on_failure=True, created_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get("/settings/notifications", response_model=NotificationSettingsOut)
 def get_notifications(db: Session = Depends(get_db), _=Depends(get_current_account)):
     cfg = db.query(NotificationConfig).first()
     if cfg is None:
-        cfg = NotificationConfig()
-        db.add(cfg); db.commit(); db.refresh(cfg)
+        return _defaults_out()  # 只读返回默认,不在 GET 里建行
     return _to_out(cfg)
 
 

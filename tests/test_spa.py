@@ -32,3 +32,13 @@ def test_spa_fallback_serves_index_and_assets(spa_client):
 def test_api_still_works_with_spa(spa_client):
     # /api/v1/* 不被 SPA fallback 吞掉
     assert spa_client.get("/api/v1/health").status_code == 200
+
+
+def test_spa_rejects_path_traversal(spa_client, tmp_path):
+    # static 的兄弟目录放一个"机密"文件,尝试经 ../ 遍历读它
+    secret = tmp_path / "secret.txt"
+    secret.write_text("ROOT-SECRET")
+    # 用 %2e%2e 绕过客户端路径归一化,让 .. 原样到达路由
+    r = spa_client.get("/%2e%2e/secret.txt")
+    assert r.text != "ROOT-SECRET"  # 绝不能泄露出 static_dir 之外的文件
+    assert r.text == "<html>SPA</html>"  # 一律回退 index.html

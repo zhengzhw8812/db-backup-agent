@@ -23,7 +23,7 @@ def test_sha256_stable_and_distinct(tmp_path):
     assert len(sha256_of_file(a)) == 64
 
 
-from app.core.archive import compress_file, decompress_file
+from app.core.archive import compress_file, decompress_file, compress_and_hash
 
 
 def test_decompress_roundtrips_compress(tmp_path):
@@ -32,5 +32,20 @@ def test_decompress_roundtrips_compress(tmp_path):
     gz = tmp_path / "a.sql.gz"
     out = tmp_path / "out.sql"
     compress_file(raw, gz)
+    decompress_file(gz, out)
+    assert out.read_bytes() == raw.read_bytes()
+
+
+def test_compress_and_hash_matches_file_sha(tmp_path):
+    """compress_and_hash 返回的摘要应等于落盘 .gz 的 sha256,且可被 gzip 解压还原。"""
+    raw = tmp_path / "a.sql"
+    raw.write_bytes(b"CREATE TABLE t (id int);\n" * 1000)  # 可重复内容,触发分块
+    gz = tmp_path / "a.sql.gz"
+    digest = compress_and_hash(raw, gz)
+    assert len(digest) == 64
+    # 与直接对落盘文件求 sha 一致(证明哈希的就是写入的字节)
+    assert digest == sha256_of_file(gz)
+    # gzip 可正常解压还原
+    out = tmp_path / "out.sql"
     decompress_file(gz, out)
     assert out.read_bytes() == raw.read_bytes()

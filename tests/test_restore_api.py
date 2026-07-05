@@ -66,6 +66,21 @@ def test_restore_rejects_non_success_backup(authed):
     assert r.status_code == 400
 
 
+def test_restore_rejects_when_already_running(authed):
+    """同一目标连接已有 running 恢复 → 409。"""
+    authed.app.state.arq = FakeArq()
+    from app.db import session as _session
+    from app.db.models import BackupRecord, DbConnection, RestoreRecord
+    db = _session._SessionLocal()
+    backup = db.query(BackupRecord).first()
+    conn_id = db.query(DbConnection).first().id
+    db.add(RestoreRecord(backup_record_id=backup.id, target_connection_id=conn_id,
+                         status="running", started_at=datetime.utcnow()))
+    db.commit(); backup_id = backup.id; db.close()
+    r = authed.post("/api/v1/restore", json={"backup_record_id": backup_id, "target_connection_id": conn_id})
+    assert r.status_code == 409
+
+
 def test_list_and_cancel(authed, monkeypatch):
     authed.app.state.arq = FakeArq()
     from app.db import session as _session
