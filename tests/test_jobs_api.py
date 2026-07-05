@@ -53,7 +53,7 @@ def test_run_creates_record_and_enqueues(authed):
     assert body["status"] == "running"
     assert authed.app.state.arq.enqueued
     assert authed.app.state.arq.enqueued[0][0] == "backup_job"
-    # enqueue args: ("backup_job", connection_id, record_id) — 3 elements
+    # enqueue args: ("backup_job", connection_id, [record_id]) — 3 elements
     assert len(authed.app.state.arq.enqueued[0]) == 3
     assert body["record_ids"] and len(body["record_ids"]) == 1
 
