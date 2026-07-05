@@ -23,19 +23,23 @@ def _run_backup_sync(ctx, connection_id: int, record_ids: list[int]) -> dict:
         conn = db.get(DbConnection, connection_id)
         if conn is None:
             raise ValueError(f"连接不存在: {connection_id}")
+        any_success = False
         for rid in record_ids:
             reporter = ProgressReporter(rid)
             rec = run_backup(db, crypto, conn, reporter, ctx["backup_dir"], rid)
             if rec.status == "success":
-                try:
-                    run_retention(db, conn, ctx["backup_dir"])
-                except Exception:
-                    pass  # 保留清理失败不影响备份结果
+                any_success = True
             try:
                 notify_backup_result(db, crypto, conn, rec)
             except Exception:
                 pass  # 通知失败不影响备份结果
             results.append({"record_id": rec.id, "status": rec.status})
+        # 保留期清理是连接级(扫描该连接所有记录),整批跑一次即可,不必逐 record
+        if any_success:
+            try:
+                run_retention(db, conn, ctx["backup_dir"])
+            except Exception:
+                pass  # 保留清理失败不影响备份结果
         return {"results": results}
     finally:
         db.close()
