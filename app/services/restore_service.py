@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -9,16 +8,10 @@ from sqlalchemy.orm import Session
 from app.db.models import DbConnection, BackupRecord, RestoreRecord
 from app.core.crypto import Crypto
 from app.core.archive import decompress_file, sha256_of_file
-from app.adapters.base import get_adapter
+from app.core.fsutil import safe_remove
+from app.adapters.base import get_adapter, BackupCancelled
 from app.services.backup_service import _conn_info
 from app.workers.progress import ProgressReporter
-
-
-def _safe_remove(path: Path) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
 
 
 def run_restore(
@@ -89,7 +82,8 @@ def run_restore(
         # 3. 还原
         reporter.report("restore")
         adapter = get_adapter(target_conn.type)
-        adapter.restore(_conn_info(target_conn, crypto), str(raw_path))
+        restore_db = backup_record.db_name if backup_record.db_name is not None else target_conn.db_name
+        adapter.restore(_conn_info(target_conn, crypto, restore_db), str(raw_path), is_cancelled=reporter.is_cancelled)
 
         restore_record.status = "success"
         restore_record.finished_at = now_fn()
@@ -97,6 +91,14 @@ def run_restore(
         db.commit()
         db.refresh(restore_record)
         reporter.report("success")
+        return restore_record
+    except BackupCancelled:
+        restore_record.status = "cancelled"
+        restore_record.finished_at = now_fn()
+        restore_record.duration_ms = int((time.monotonic() - start) * 1000)
+        db.commit()
+        db.refresh(restore_record)
+        reporter.report("cancelled")
         return restore_record
     except Exception as exc:
         restore_record.status = "failed"
@@ -108,4 +110,4 @@ def run_restore(
         reporter.report("failed", str(exc))
         return restore_record
     finally:
-        _safe_remove(raw_path)
+        safe_remove(raw_path)

@@ -18,7 +18,7 @@ class FakeAdapter:
     def __init__(self, content: bytes = b"-- dump\n"):
         self.content = content
 
-    def dump(self, info, dest_path):
+    def dump(self, info, dest_path, *, is_cancelled=None):
         with open(dest_path, "wb") as f:
             f.write(self.content)
 
@@ -71,7 +71,7 @@ def test_run_backup_failed(tmp_path, monkeypatch):
     db, conn, crypto, bdir, rid = _setup(tmp_path, monkeypatch)
     bdir.mkdir()
     class BoomAdapter(FakeAdapter):
-        def dump(self, info, dest): raise RuntimeError("pg_dump not found")
+        def dump(self, info, dest, *, is_cancelled=None): raise RuntimeError("pg_dump not found")
     monkeypatch.setattr("app.services.backup_service.get_adapter", lambda t: BoomAdapter())
     reporter = ProgressReporter(rid, FakeRedis())
     rec = run_backup(db, crypto, conn, reporter, bdir, rid)
@@ -106,7 +106,7 @@ class FlipAfterDumpAdapter:
     type = "pg"
     def __init__(self, redis):
         self.redis = redis
-    def dump(self, info, dest_path):
+    def dump(self, info, dest_path, *, is_cancelled=None):
         with open(dest_path, "wb") as f:
             f.write(b"-- partial dump\n")
         self.redis.cancelled = True  # 写完 raw 后翻转取消标志
@@ -135,4 +135,75 @@ def test_run_backup_unknown_record_raises(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         run_backup(db, crypto, conn, ProgressReporter(rid, FakeRedis()), bdir, 999999)
+    db.close()
+
+
+def test_resolve_db_names_pg_uses_db_names(tmp_path):
+    from app.services.backup_service import _resolve_db_names
+    from app.db.session import init_engine, create_all
+    from app.db.models import DbConnection
+    import json
+    init_engine(f"sqlite:///{tmp_path/'r.db'}"); create_all()
+    db = _session._SessionLocal()
+    try:
+        c = DbConnection(name="c", type="pg", db_names=json.dumps(["app", "logs"]))
+        db.add(c)
+        assert _resolve_db_names(c) == ["app", "logs"]
+    finally:
+        db.close()
+
+
+def test_resolve_db_names_mysql_all_when_empty(tmp_path):
+    from app.services.backup_service import _resolve_db_names
+    from app.db.session import init_engine, create_all
+    from app.db.models import DbConnection
+    init_engine(f"sqlite:///{tmp_path/'r.db'}"); create_all()
+    db = _session._SessionLocal()
+    try:
+        c = DbConnection(name="m", type="mysql")  # 无 db_names / db_name
+        db.add(c)
+        assert _resolve_db_names(c) == [None]  # MySQL 全库 → [None]
+    finally:
+        db.close()
+
+
+def test_enqueue_backup_creates_one_record_per_db(tmp_path, monkeypatch):
+    from app.services.backup_service import enqueue_backup
+    from app.db.session import init_engine, create_all
+    from app.db.models import DbConnection, BackupRecord
+    import json
+    init_engine(f"sqlite:///{tmp_path/'e.db'}"); create_all()
+    db = _session._SessionLocal()
+    try:
+        c = DbConnection(name="c", type="pg", db_names=json.dumps(["app", "logs", "shop"]))
+        db.add(c); db.commit(); db.refresh(c)
+        recs = enqueue_backup(db, c, "manual")
+        assert len(recs) == 3
+        assert sorted(r.db_name for r in recs) == ["app", "logs", "shop"]
+        assert all(r.status == "running" for r in recs)
+        assert db.query(BackupRecord).count() == 3
+    finally:
+        db.close()
+
+
+def test_run_backup_uses_record_db_name(tmp_path, monkeypatch):
+    """run_backup 应按 record.db_name 决定 dump 的库(record 是真实来源)。"""
+    db, conn, crypto, bdir, _ = _setup(tmp_path, monkeypatch)
+    bdir.mkdir()
+    from app.db.models import BackupRecord
+    from datetime import datetime
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="running",
+                       db_name="chosen_db", started_at=datetime.utcnow())
+    db.add(rec); db.commit(); db.refresh(rec)
+
+    seen = {}
+    class SpyAdapter(FakeAdapter):
+        def dump(self, info, dest_path, *, is_cancelled=None):
+            seen["db_name"] = info.db_name
+            super().dump(info, dest_path, is_cancelled=is_cancelled)
+    monkeypatch.setattr("app.services.backup_service.get_adapter", lambda t: SpyAdapter())
+
+    out = run_backup(db, crypto, conn, ProgressReporter(rec.id, FakeRedis()), bdir, rec.id)
+    assert out.status == "success"
+    assert seen["db_name"] == "chosen_db"   # 用的是 record.db_name,而非 conn.db_name('d')
     db.close()
