@@ -79,6 +79,25 @@ def test_migrate_schema_preserves_existing_db_names(tmp_path):
         db.close()
 
 
+def test_migrate_schema_backfills_record_db_name(tmp_path):
+    """旧备份记录(db_name NULL)+ 连接有 db_name → 回填 record.db_name。"""
+    init_engine(f"sqlite:///{tmp_path/'rec.db'}")
+    create_all()
+    db = _session._SessionLocal()
+    try:
+        conn = DbConnection(name="legacy", type="pg", db_name="legacydb")
+        db.add(conn); db.commit(); db.refresh(conn)
+        db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                            started_at=datetime.utcnow()))  # db_name 未设 → NULL
+        db.commit()
+
+        migrate_schema(db)
+        rec = db.query(BackupRecord).one()
+        assert rec.db_name == "legacydb"
+    finally:
+        db.close()
+
+
 def test_migrate_schema_adds_missing_columns(tmp_path):
     """模拟旧库(缺新列):migrate_schema 应补上 db_connections.db_names 与 backup_records.db_name。"""
     init_engine(f"sqlite:///{tmp_path/'legacy.db'}")
