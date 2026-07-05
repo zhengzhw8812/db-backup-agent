@@ -407,3 +407,19 @@ def test_pg_list_databases_all_fail_raises(monkeypatch):
     with pytest.raises(RuntimeError) as ei:
         a.list_databases(info)
     assert "维护库" in str(ei.value)
+
+
+def test_mysql_argv_all_databases_when_no_dbname():
+    a = MysqlAdapter()
+    info = ConnectionInfo(type="mysql", host="h", port=3306, username="u")  # 无 db_name
+    cmd = a.argv(info, "/tmp/x.cnf")
+    assert "--all-databases" in cmd
+    assert "shop" not in cmd
+
+
+def test_mysql_argv_keeps_single_db_when_dbname():
+    """有 db_name 的旧连接保持原行为(只备份该库)。"""
+    a = MysqlAdapter()
+    cmd = a.argv(ConnectionInfo(type="mysql", db_name="shop"), "/tmp/x.cnf")
+    assert "shop" in cmd
+    assert "--all-databases" not in cmd

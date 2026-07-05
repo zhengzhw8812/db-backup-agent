@@ -1,9 +1,9 @@
 from __future__ import annotations
 import os
-import subprocess
 import tempfile
+from typing import Callable
 
-from app.adapters.base import ConnectionInfo, register_adapter
+from app.adapters.base import ConnectionInfo, register_adapter, run_subprocess
 
 
 class MysqlAdapter:
@@ -17,6 +17,8 @@ class MysqlAdapter:
             cmd += ["-P", str(info.port)]
         if info.db_name:
             cmd += [info.db_name]
+        else:
+            cmd += ["--all-databases"]
         return cmd
 
     def _write_defaults(self, info: ConnectionInfo) -> str:
@@ -35,12 +37,12 @@ class MysqlAdapter:
         os.chmod(path, 0o600)
         return path
 
-    def dump(self, info: ConnectionInfo, dest_path: str) -> None:
+    def dump(self, info: ConnectionInfo, dest_path: str, *,
+             is_cancelled: Callable[[], bool] | None = None) -> None:
         defaults_file = self._write_defaults(info)
         try:
-            argv = self.argv(info, defaults_file)
             with open(dest_path, "wb") as f:
-                subprocess.run(argv, stdout=f, stderr=subprocess.PIPE, check=True)
+                run_subprocess(self.argv(info, defaults_file), stdout=f, is_cancelled=is_cancelled)
         finally:
             try:
                 os.unlink(defaults_file)
@@ -57,12 +59,31 @@ class MysqlAdapter:
             cmd += [info.db_name]
         return cmd
 
-    def restore(self, info: ConnectionInfo, src_path: str) -> None:
+    def restore(self, info: ConnectionInfo, src_path: str, *,
+                is_cancelled: Callable[[], bool] | None = None) -> None:
         defaults_file = self._write_defaults(info)
         try:
-            argv = self.restore_argv(info, defaults_file)
             with open(src_path, "rb") as f:
-                subprocess.run(argv, stdin=f, stderr=subprocess.PIPE, check=True)
+                run_subprocess(self.restore_argv(info, defaults_file), stdin=f, is_cancelled=is_cancelled)
+        finally:
+            try:
+                os.unlink(defaults_file)
+            except OSError:
+                pass
+
+    def test(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> None:
+        """连接/认证探测:mysql -e 'select 1'(走 defaults-extra-file,密码不上 argv)。"""
+        defaults_file = self._write_defaults(info)
+        try:
+            cmd = ["mysql", f"--defaults-extra-file={defaults_file}"]
+            if info.host:
+                cmd += ["-h", info.host]
+            if info.port:
+                cmd += ["-P", str(info.port)]
+            if info.db_name:
+                cmd += [info.db_name]
+            cmd += ["-e", "select 1"]
+            run_subprocess(cmd, timeout=10, is_cancelled=is_cancelled)
         finally:
             try:
                 os.unlink(defaults_file)
