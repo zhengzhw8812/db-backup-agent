@@ -29,11 +29,25 @@ def _backfill_db_names(db: Session) -> None:
         db.commit()
 
 
+def _backfill_record_db_names(db: Session) -> None:
+    """旧备份记录(db_name 为 NULL)回填为其连接的 db_name(旧连接都是单库)。
+    MySQL 全库 / 无 db_name 连接保持 NULL(前端显示「全部」即正确)。"""
+    touched = 0
+    for rec in db.query(BackupRecord).filter(BackupRecord.db_name.is_(None)).all():
+        conn = db.get(DbConnection, rec.connection_id)
+        if conn and conn.db_name:
+            rec.db_name = conn.db_name
+            touched += 1
+    if touched:
+        db.commit()
+
+
 def migrate_schema(db: Session) -> None:
     """启动时补齐 db_connections.db_names / backup_records.db_name 两列并回填。"""
     _ensure_column(db, "db_connections", "db_names", "TEXT")
     _ensure_column(db, "backup_records", "db_name", "TEXT")
     _backfill_db_names(db)
+    _backfill_record_db_names(db)
 
 
 def reap_stale_running(db: Session) -> int:
