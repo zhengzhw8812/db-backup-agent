@@ -13,8 +13,10 @@ const conns = ref<Connection[]>([])
 const filter = ref('')
 
 async function load() {
-  const [b, c] = await Promise.all([bkApi.listBackups(), connApi.listConnections()])
-  data.value = b.data; conns.value = c.data
+  try {
+    const [b, c] = await Promise.all([bkApi.listBackups(), connApi.listConnections()])
+    data.value = b.data; conns.value = c.data
+  } catch (e: any) { msg.error('加载历史失败') }
 }
 function connLabel(id: number) { return conns.value.find(x => x.id === id)?.name ?? `#${id}` }
 function download(id: number) { window.open(bkApi.downloadUrl(id), '_blank') }
@@ -28,6 +30,7 @@ const statusTag = (s: string) => {
 const columns: DataTableColumns<BackupFile> = [
   { title: '时间', key: 'started_at', render: r => new Date(r.started_at).toLocaleString() },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
+  { title: '数据库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '触发', key: 'trigger', render: r => r.trigger === 'scheduled' ? '计划' : '手动' },
   { title: '状态', key: 'status', render: r => statusTag(r.status) },
   { title: '大小', key: 'size', render: r => fmtBytes(r.size) },

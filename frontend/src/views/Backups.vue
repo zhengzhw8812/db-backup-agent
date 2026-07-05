@@ -36,15 +36,19 @@ function currentStep() {
 }
 
 async function load() {
-  const [c, f, j] = await Promise.all([connApi.listConnections(), bkApi.listBackups(), jobsApi.listJobs()])
-  conns.value = c.data; files.value = f.data; jobs.value = j.data
+  try {
+    const [c, f, j] = await Promise.all([connApi.listConnections(), bkApi.listBackups(), jobsApi.listJobs()])
+    conns.value = c.data; files.value = f.data; jobs.value = j.data
+  } catch (e: any) { msg.error('加载数据失败') }
 }
 async function runNow() {
   if (selectedConn.value == null) { msg.warning('请先选择连接'); return }
   try {
     const r = await jobsApi.runBackup(selectedConn.value)
+    const ids = r.data.record_ids || []
     showProgress.value = true
-    subscribe(r.data.record_id)
+    if (ids.length) subscribe(ids[0])  // v1:进度抽屉跟第一条;其余靠下方 poll 刷新
+    msg.success(`已创建 ${ids.length} 条备份任务`)
     poll()
   } catch (e: any) { msg.error(e.response?.data?.detail || '启动失败') }
 }
@@ -57,8 +61,14 @@ function poll() {
     }
   }, 2000)
 }
-async function cancel(id: number) { await jobsApi.cancelJob(id); msg.success('已请求取消'); await load() }
-async function remove(id: number) { await bkApi.deleteBackup(id); msg.success('已删除'); await load() }
+async function cancel(id: number) {
+  try { await jobsApi.cancelJob(id); msg.success('已请求取消'); await load() }
+  catch (e: any) { msg.error(e.response?.data?.detail || '取消失败') }
+}
+async function remove(id: number) {
+  try { await bkApi.deleteBackup(id); msg.success('已删除'); await load() }
+  catch (e: any) { msg.error(e.response?.data?.detail || '删除失败') }
+}
 function download(id: number) { window.open(bkApi.downloadUrl(id), '_blank') }
 
 const fmtMs = (ms?: number | null) => (ms == null ? '—' : (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`))
@@ -79,6 +89,7 @@ const jobColumns: DataTableColumns<Job> = [
   { title: '记录', key: 'id' },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: '触发', key: 'trigger' },
+  { title: '库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '状态', key: 'status', render: r => statusTag(r.status) },
   {
     title: '操作', key: 'actions',
@@ -88,6 +99,7 @@ const jobColumns: DataTableColumns<Job> = [
 const fileColumns: DataTableColumns<BackupFile> = [
   { title: '时间', key: 'started_at', render: r => new Date(r.started_at).toLocaleString() },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
+  { title: '库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '状态', key: 'status', render: r => statusTag(r.status) },
   { title: '大小', key: 'size', render: r => fmtBytes(r.size) },
   { title: '耗时', key: 'duration_ms', render: r => fmtMs(r.duration_ms) },
@@ -147,7 +159,7 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
       <div style="margin-top:16px">
         <n-text depth="3">实时日志:</n-text>
         <div class="log">
-          <div v-for="(e, i) in events" :key="i">
+          <div v-for="e in events" :key="e.id">
             • {{ e.stage }} <span v-if="e.detail" style="opacity:.6">— {{ e.detail }}</span>
           </div>
         </div>
