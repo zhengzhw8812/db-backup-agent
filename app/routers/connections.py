@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.deps import get_current_account
-from app.schemas.connection import ConnectionCreate, ConnectionUpdate, ConnectionOut
+from app.schemas.connection import ConnectionProbe, ConnectionCreate, ConnectionUpdate, ConnectionOut
 from app.services import connection_service as svc
 
 router = APIRouter()
@@ -65,3 +65,21 @@ def test(conn_id: int, request: Request, db: Session = Depends(get_db), _=Depend
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True}
+
+
+@router.post("/list-databases")
+def list_databases_pre(payload: ConnectionProbe, request: Request, _=Depends(get_current_account)):
+    try:
+        dbs = svc.list_databases_for_payload(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"databases": dbs}
+
+
+@router.post("/{conn_id}/databases")
+def list_databases_post(conn_id: int, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    try:
+        dbs = svc.list_databases_for_connection(db, request.app.state.crypto, conn_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"databases": dbs}

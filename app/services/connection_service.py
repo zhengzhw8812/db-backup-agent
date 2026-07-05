@@ -96,3 +96,26 @@ def test_connection(db: Session, crypto: Crypto, conn_id: int) -> None:
         username=c.username, password=decrypt_password(c, crypto),
     )
     get_adapter(c.type).test(info)
+
+
+def list_databases_for_payload(data) -> list[str]:
+    """保存前:用表单明文凭证列出可备份的库(仅 PG)。其它类型直接抛,由路由转 400。"""
+    if data.type != "pg":
+        raise NotImplementedError("该类型暂不支持选择数据库;MySQL 默认全库备份,其余类型请直接填写")
+    info = ConnectionInfo(
+        type=data.type, host=data.host, port=data.port, db_name=data.db_name,
+        username=data.username, password=data.password,
+    )
+    return get_adapter(data.type).list_databases(info)
+
+
+def list_databases_for_connection(db: Session, crypto: Crypto, conn_id: int) -> list[str]:
+    """保存后:解密已存密码列出库(编辑态、密码未改时用)。"""
+    c = get_connection(db, conn_id)
+    if c.type != "pg":
+        raise NotImplementedError("该类型暂不支持选择数据库;MySQL 默认全库备份,其余类型请直接填写")
+    info = ConnectionInfo(
+        type=c.type, host=c.host, port=c.port, db_name=c.db_name,
+        username=c.username, password=decrypt_password(c, crypto),
+    )
+    return get_adapter(c.type).list_databases(info)

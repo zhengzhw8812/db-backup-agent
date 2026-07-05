@@ -201,3 +201,40 @@ def test_update_connection_db_names(authed):
     cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg", "db_names": ["a"]}).json()["id"]
     r = authed.put(f"/api/v1/connections/{cid}", json={"db_names": ["a", "b"]})
     assert r.json()["db_names"] == ["a", "b"]
+
+
+def test_list_databases_pre_save_success(authed, monkeypatch):
+    class FakeAdapter:
+        def list_databases(self, info, *, is_cancelled=None): return ["app", "logs"]
+    monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: FakeAdapter())
+    r = authed.post("/api/v1/connections/list-databases",
+                    json={"type": "pg", "host": "h", "port": 5432, "username": "u", "password": "p"})
+    assert r.status_code == 200
+    assert r.json() == {"databases": ["app", "logs"]}
+
+
+def test_list_databases_pre_save_failure_returns_400(authed, monkeypatch):
+    class BadAdapter:
+        def list_databases(self, info, *, is_cancelled=None): raise RuntimeError("password authentication failed")
+    monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: BadAdapter())
+    r = authed.post("/api/v1/connections/list-databases",
+                    json={"type": "pg", "host": "h", "username": "u", "password": "p"})
+    assert r.status_code == 400
+    assert "password authentication failed" in r.json()["detail"]
+
+
+def test_list_databases_unsupported_type(authed):
+    """MySQL/Mongo/Redis/SQLite 不支持选库 → 400 + 友好提示。"""
+    r = authed.post("/api/v1/connections/list-databases", json={"type": "mysql"})
+    assert r.status_code == 400
+    assert "不支持" in r.json()["detail"]
+
+
+def test_list_databases_post_save_success(authed, monkeypatch):
+    cid = authed.post("/api/v1/connections", json={"name": "pg1", "type": "pg"}).json()["id"]
+    class FakeAdapter:
+        def list_databases(self, info, *, is_cancelled=None): return ["app"]
+    monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: FakeAdapter())
+    r = authed.post(f"/api/v1/connections/{cid}/databases")
+    assert r.status_code == 200
+    assert r.json() == {"databases": ["app"]}
