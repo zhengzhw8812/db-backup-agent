@@ -20,10 +20,13 @@ def _ensure_column(db: Session, table: str, column: str, ddl: str) -> None:
 
 def _backfill_db_names(db: Session) -> None:
     """旧连接(只有 db_name)回填 db_names=['<db_name>'];幂等。"""
+    touched = 0
     for c in db.query(DbConnection).all():
         if not c.db_names and c.db_name:
             c.db_names = json.dumps([c.db_name])
-    db.commit()
+            touched += 1
+    if touched:
+        db.commit()
 
 
 def migrate_schema(db: Session) -> None:
