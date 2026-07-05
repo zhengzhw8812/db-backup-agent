@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, BigInteger
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, BigInteger, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -10,8 +10,6 @@ class Account(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -23,6 +21,7 @@ class DbConnection(Base):
     host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     db_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    db_names: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 数组,如 ["app","logs"];PG 多选
     username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     password_enc: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet 密文
     extra: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 字符串
@@ -41,13 +40,23 @@ class Schedule(Base):
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     connection: Mapped["DbConnection"] = relationship(back_populates="schedules")
+    __table_args__ = (
+        Index("ix_schedules_connection_id", "connection_id"),
+        Index("ix_schedules_enabled", "enabled"),
+    )
 
 
 class BackupRecord(Base):
     __tablename__ = "backup_records"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    __table_args__ = (
+        Index("ix_backup_records_status", "status"),
+        Index("ix_backup_records_connection_id", "connection_id"),
+        Index("ix_backup_records_started_at", "started_at"),
+    )
     connection_id: Mapped[int] = mapped_column(ForeignKey("db_connections.id", ondelete="CASCADE"), nullable=False)
     trigger: Mapped[str] = mapped_column(String(16), nullable=False)  # manual/scheduled
+    db_name: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 本记录备份的具体库;MySQL 全库/旧记录为 NULL
     status: Mapped[str] = mapped_column(String(16), nullable=False)   # running/success/failed/cancelled
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -66,6 +75,7 @@ class SystemLog(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (Index("ix_system_logs_created_at", "created_at"),)
 
 
 class RestoreRecord(Base):
@@ -102,6 +112,9 @@ class SyncTarget(Base):
     connection_id: Mapped[int] = mapped_column(ForeignKey("db_connections.id", ondelete="CASCADE"), nullable=False)
     cloud_destination_id: Mapped[int] = mapped_column(ForeignKey("cloud_destinations.id", ondelete="CASCADE"), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("connection_id", "cloud_destination_id", name="uq_sync_target"),
+    )
 
 
 class NotificationConfig(Base):

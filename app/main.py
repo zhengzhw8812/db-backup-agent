@@ -14,10 +14,21 @@ from app.routers import settings as settings_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 启动时补齐新列/回填,再清理上次崩溃残留的 running 记录
+    from app.services.maintenance import migrate_schema, reap_stale_running
+    from app.db.session import get_db
+    db = next(get_db())
+    try:
+        migrate_schema(db)
+        reap_stale_running(db)
+    finally:
+        db.close()
+
     from app.services.scheduler import SchedulerService
     sched = SchedulerService(app)
-    await sched.start()
-    app.state.scheduler = sched
+    if settings.scheduler_enabled:
+        await sched.start()
+    app.state.scheduler = sched  # 始终存在,便于 CRUD(scheduler_enabled=False 时仅不入队触发)
     try:
         yield
     finally:
@@ -39,7 +50,7 @@ def create_app() -> FastAPI:
             db.close()
 
     app = FastAPI(title="DB Backup Agent", version="3.0.0", lifespan=lifespan)
-    app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax", https_only=False)
+    app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax", https_only=settings.cookie_secure)
     app.state.crypto = Crypto(fernet_key.encode("ascii"))
     app.state.arq = None
     app.include_router(health.router, prefix="/api/v1")
@@ -61,8 +72,11 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}")
         async def _spa(full_path: str):
-            candidate = static_dir / full_path
-            if full_path and candidate.is_file():
+            # 仅当解析后路径仍在 static_dir 内且是文件时才返回该文件;
+            # 否则一律回退 index.html(客户端路由 + 防 ../../etc/passwd 遍历)。
+            base = static_dir.resolve()
+            candidate = (static_dir / full_path).resolve()
+            if full_path and (candidate == base or base in candidate.parents) and candidate.is_file():
                 return FileResponse(candidate)
             return FileResponse(static_dir / "index.html")
 
