@@ -1,8 +1,31 @@
 <script setup lang="ts">
-import { NForm, NFormItem, NInput, NButton } from 'naive-ui'
-import { useLogin } from '../composables/useLogin'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 
-const { username, password, loading, submit } = useLogin()
+const auth = useAuthStore()
+const router = useRouter()
+const msg = useMessage()
+const username = ref('')
+const password = ref('')
+const loading = ref(false)
+
+async function submit() {
+  if (!username.value.trim() || !password.value) {
+    msg.warning('请输入用户名和密码')
+    return
+  }
+  loading.value = true
+  try {
+    await auth.doLogin(username.value, password.value)
+    router.push('/')
+  } catch {
+    msg.error('用户名或密码错误')
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
