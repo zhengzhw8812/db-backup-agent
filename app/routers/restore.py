@@ -72,6 +72,6 @@ def cancel_restore(record_id: int, db: Session = Depends(get_db), _=Depends(get_
 
 @router.get("/restore/{record_id}/events")
 async def restore_events(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    rec = db.get(RestoreRecord, record_id)
-    initial = rec.status if rec else None
-    return StreamingResponse(event_stream(record_id, "restore", initial), media_type="text/event-stream")
+    if db.get(RestoreRecord, record_id) is None:
+        raise HTTPException(status_code=404, detail="恢复任务不存在")
+    return StreamingResponse(event_stream(record_id, "restore"), media_type="text/event-stream")

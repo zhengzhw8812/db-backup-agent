@@ -74,6 +74,6 @@ def cancel(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_
 
 @router.get("/jobs/{record_id}/events")
 async def events(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
-    rec = db.get(BackupRecord, record_id)
-    initial = rec.status if rec else None
-    return StreamingResponse(event_stream(record_id, "job", initial), media_type="text/event-stream")
+    if db.get(BackupRecord, record_id) is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return StreamingResponse(event_stream(record_id, "job"), media_type="text/event-stream")
