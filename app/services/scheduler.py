@@ -79,6 +79,14 @@ class SchedulerService:
             db.close()
         self._sched.start()
 
+    @property
+    def running(self) -> bool:
+        """调度器是否在运行(健康检查用)。"""
+        try:
+            return bool(self._sched.running)
+        except Exception:
+            return False
+
     def stop(self) -> None:
         try:
             self._sched.shutdown(wait=False)
