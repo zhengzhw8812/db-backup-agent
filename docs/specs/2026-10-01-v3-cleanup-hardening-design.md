@@ -95,11 +95,9 @@
 
 测试:模拟"DB 为 running、终态消息已发布"的时序,断言流能收到终态并结束。
 
-### H3 调度器兜底分支 NameError 修复(P1)
+### H3 调度器兜底分支检查(已核实为误报,无代码改动)
 
-`app/services/scheduler.py:run_scheduled_backup`:`record_ids` 在 try 块内赋值,若建记录环节抛错,except 兜底分支引用未定义变量自身崩溃。修复:进入 try 前初始化 `record_ids: list[int] = []`,兜底分支加空列表守卫。
-
-测试:monkeypatch `enqueue_backup` 抛异常,断言不抛 NameError、无记录残留。
+`app/services/scheduler.py:run_scheduled_backup` 实施时逐行核实:`record_ids` 在第一个 try/finally(建记录)中赋值,仅被第二个 try/except(队列投递失败翻转记录)引用;后者只在前者完全成功后可达,不存在"引用未初始化变量"的路径。原审计误读了控制流。该函数的既有行为(入队前异常原样传播、投递失败翻转记录后 re-raise)本身正确,以测试守护既有行为,无代码改动。
 
 ### H4 `datetime.utcnow()` 全量迁移(P2)
 
