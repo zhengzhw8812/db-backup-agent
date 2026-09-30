@@ -71,7 +71,7 @@
 
 ## 5. 重写 README
 
-- **功能列表按 v3 代码实况**: 5 种数据库(PostgreSQL/MySQL/MongoDB/Redis/SQLite)、计划+手动备份、连接级互斥、保留策略、备份恢复、S3/MinIO 云同步、邮件+企业微信通知、多用户、SSE 实时进度、仪表盘、amd64+arm64 镜像;
+- **功能列表按 v3 代码实况**: 5 种数据库(PostgreSQL/MySQL/MongoDB/Redis/SQLite)、计划+手动备份、连接级互斥、保留策略、备份恢复、S3/MinIO 云同步、邮件+企业微信通知、单管理员账号(argon2 哈希)、SSE 实时进度、仪表盘、amd64+arm64 镜像;
 - **快速开始**: docker-compose 拉取 `tony5188/db-backup-agent:latest`,保留原有结构但更新为 v3(端口、卷、首次登录);
 - **本地开发**: 简述并指向 AGENTS.md;
 - **更新日志**: 顶部新增 v3.0.0 条目(全栈重写:FastAPI/Vue 3/任务队列/云同步/恢复),v2 日志作为项目历史保留;
