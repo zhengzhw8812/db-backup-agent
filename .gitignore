@@ -39,7 +39,6 @@ data-verify/
 
 # Archive directory (development files only)
 archive/
-.superpowers/
 
 # Frontend (Vite + Vue3)
 frontend/node_modules/
