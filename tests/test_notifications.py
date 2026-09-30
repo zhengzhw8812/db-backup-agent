@@ -7,6 +7,7 @@ from app.db.models import DbConnection, BackupRecord, NotificationConfig
 from app.core.crypto import Crypto
 from cryptography.fernet import Fernet
 from app.services.notifications import notify_backup_result
+from app.core.clock import utcnow
 
 
 def _db(tmp_path):
@@ -21,7 +22,7 @@ def test_notify_no_config_is_noop(tmp_path):
     conn = DbConnection(name="c", type="pg")
     db.add(conn); db.commit(); db.refresh(conn)
     from datetime import datetime
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
     # 无 NotificationConfig —— 不应抛错
     assert notify_backup_result(db, crypto, conn, rec) == {"email": False, "wechat": False}
     db.close()
@@ -34,7 +35,7 @@ def test_notify_success_respects_flag(tmp_path, monkeypatch):
                               smtp_host="h", smtp_port=25, smtp_from="a@b", recipients="x@y"))
     db.commit()
     from datetime import datetime
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     called = {}
     monkeypatch.setattr("app.services.notifications._send_email", lambda cfg, subj, body, password: called.setdefault("email", (subj, body)))
@@ -52,7 +53,7 @@ def test_notify_failure_when_flag_off_skips(tmp_path, monkeypatch):
                               smtp_host="h", smtp_port=25, smtp_from="a@b", recipients="x@y"))
     db.commit()
     from datetime import datetime
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="failed", error="boom", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="failed", error="boom", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     monkeypatch.setattr("app.services.notifications._send_email", lambda *a: None)
     assert notify_backup_result(db, crypto, conn, rec)["email"] is False
@@ -66,7 +67,7 @@ def test_notify_one_channel_failure_does_not_break_other(tmp_path, monkeypatch):
                               smtp_from="a@b", recipients="x@y", wechat_corp_id="cid", wechat_agent_id="aid"))
     db.commit()
     from datetime import datetime
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     def boom_email(*a): raise RuntimeError("smtp down")
     monkeypatch.setattr("app.services.notifications._send_email", boom_email)
@@ -86,7 +87,7 @@ def test_notify_does_not_mutate_encrypted_columns(tmp_path, monkeypatch):
                              smtp_from="a@b", recipients="x@y", smtp_user="u", smtp_password_enc=enc_pw)
     db.add(cfg); db.commit(); db.refresh(cfg)
     from datetime import datetime
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     monkeypatch.setattr("app.services.notifications._send_email", lambda *a: None)
     notify_backup_result(db, crypto, conn, rec)

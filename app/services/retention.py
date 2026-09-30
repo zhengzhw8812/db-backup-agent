@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DbConnection, BackupRecord, Schedule
 from app.core.fsutil import safe_remove
+from app.core.clock import utcnow
 
 
 def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
@@ -18,7 +19,7 @@ def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
         return 0
     # 至少保留 1 天,避免 retention_days=0 把"刚生成的备份"立即删掉
     days = max(min(s.retention_days for s in schedules), 1)
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     old = (
         db.query(BackupRecord)
         .filter(BackupRecord.connection_id == conn.id,

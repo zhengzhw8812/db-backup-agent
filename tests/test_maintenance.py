@@ -8,6 +8,7 @@ from app.db import session as _session
 import app.db.models  # noqa
 from app.db.models import DbConnection, BackupRecord, RestoreRecord
 from app.services.maintenance import reap_stale_running, migrate_schema
+from app.core.clock import utcnow
 
 
 def test_reap_marks_stale_running_as_failed(tmp_path):
@@ -16,13 +17,13 @@ def test_reap_marks_stale_running_as_failed(tmp_path):
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
     # 一条 running(残留)、一条 success(正常)备份
-    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow()))
-    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow()))
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=utcnow()))
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow()))
     db.commit()
     backup_id = db.query(BackupRecord).filter(BackupRecord.status == "success").first().id
     # 一条 running 恢复
     db.add(RestoreRecord(backup_record_id=backup_id, target_connection_id=conn.id,
-                         status="running", started_at=datetime.utcnow()))
+                         status="running", started_at=utcnow()))
     db.commit()
 
     n = reap_stale_running(db)
@@ -88,7 +89,7 @@ def test_migrate_schema_backfills_record_db_name(tmp_path):
         conn = DbConnection(name="legacy", type="pg", db_name="legacydb")
         db.add(conn); db.commit(); db.refresh(conn)
         db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                            started_at=datetime.utcnow()))  # db_name 未设 → NULL
+                            started_at=utcnow()))  # db_name 未设 → NULL
         db.commit()
 
         migrate_schema(db)

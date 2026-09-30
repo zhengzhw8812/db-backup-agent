@@ -1,4 +1,5 @@
 import pytest
+from app.core.clock import utcnow
 
 
 @pytest.fixture
@@ -97,7 +98,7 @@ def test_sync_run_enqueues(authed):
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                          file_path="x.gz", started_at=datetime.utcnow())
+                          file_path="x.gz", started_at=utcnow())
     db.add(backup); db.commit(); bid = backup.id; db.close()
     r = authed.post("/api/v1/sync/run", json={"backup_record_id": bid})
     assert r.status_code == 200
@@ -111,6 +112,6 @@ def test_sync_run_rejects_non_success(authed):
     from datetime import datetime
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
-    failed = BackupRecord(connection_id=conn.id, trigger="manual", status="failed", started_at=datetime.utcnow())
+    failed = BackupRecord(connection_id=conn.id, trigger="manual", status="failed", started_at=utcnow())
     db.add(failed); db.commit(); fid = failed.id; db.close()
     assert authed.post("/api/v1/sync/run", json={"backup_record_id": fid}).status_code == 400

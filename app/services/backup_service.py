@@ -13,6 +13,7 @@ from app.core.archive import compress_and_hash
 from app.core.fsutil import safe_remove
 from app.adapters.base import ConnectionInfo, get_adapter, BackupCancelled
 from app.workers.progress import ProgressReporter
+from app.core.clock import utcnow
 
 
 def _conn_info(conn: DbConnection, crypto: Crypto, db_name: str | None = None) -> ConnectionInfo:
@@ -50,7 +51,7 @@ def _resolve_db_names(conn: DbConnection) -> list[str | None]:
     return [conn.db_name]
 
 
-def enqueue_backup(db: Session, conn: DbConnection, trigger: str, now_fn=datetime.utcnow) -> list[BackupRecord]:
+def enqueue_backup(db: Session, conn: DbConnection, trigger: str, now_fn=utcnow) -> list[BackupRecord]:
     """为连接的每个待备份库各建一条 running BackupRecord(trigger manual/scheduled)。
     供 run_now 与 scheduler 共用;返回创建的记录列表(已 commit)。"""
     names = _resolve_db_names(conn)
@@ -73,7 +74,7 @@ def run_backup(
     reporter: ProgressReporter,
     backup_dir: Path,
     record_id: int,
-    now_fn=datetime.utcnow,
+    now_fn=utcnow,
 ) -> BackupRecord:
     """对一条已存在的 running 记录执行备份:dump → 压缩 → 校验 → 更新(success/failed/cancelled)。
     记录由调用方(Web API)预先创建,record_id 同时作为进度频道与取消锚点。

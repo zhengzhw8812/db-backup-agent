@@ -4,6 +4,7 @@ from app.db import session as _session
 import app.db.models  # noqa
 from app.db.models import DbConnection, BackupRecord, Schedule
 from app.services.retention import run_retention
+from app.core.clock import utcnow
 
 
 def _setup(tmp_path):
@@ -23,8 +24,8 @@ def _mk(db, conn, bdir, file_name, days_old):
     gz = bdir / file_name; compress_file(raw, gz)
     rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
                        file_path=file_name, size=1, checksum="c",
-                       started_at=datetime.utcnow() - timedelta(days=days_old),
-                       finished_at=datetime.utcnow() - timedelta(days=days_old))
+                       started_at=utcnow() - timedelta(days=days_old),
+                       finished_at=utcnow() - timedelta(days=days_old))
     db.add(rec); db.commit(); db.refresh(rec)
     return rec
 
@@ -57,7 +58,7 @@ def test_retention_only_cleans_success(tmp_path):
     raw = bdir / "x.sql"; raw.write_bytes(b"d"); gz = bdir / "f.sql.gz"; compress_file(raw, gz)
     rec = BackupRecord(connection_id=conn.id, trigger="manual", status="running",
                        file_path="f.sql.gz",
-                       started_at=datetime.utcnow() - timedelta(days=30))
+                       started_at=utcnow() - timedelta(days=30))
     db.add(rec); db.commit()
     assert run_retention(db, conn, bdir) == 0   # 非 success 不删
     db.close()

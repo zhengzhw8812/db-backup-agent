@@ -7,6 +7,7 @@ from app.db.models import DbConnection, BackupRecord, CloudDestination, SyncTarg
 from app.core.crypto import Crypto
 from cryptography.fernet import Fernet
 from app.services.sync_service import run_sync
+from app.core.clock import utcnow
 
 
 class FakeStorage:
@@ -35,7 +36,7 @@ def _setup(tmp_path, monkeypatch, storage=None):
     bdir = tmp_path / "backups"; bdir.mkdir()
     (bdir / "pg.sql.gz").write_bytes(b"data")
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                          file_path="pg.sql.gz", started_at=datetime.utcnow())
+                          file_path="pg.sql.gz", started_at=utcnow())
     db.add(backup); db.commit(); db.refresh(backup)
     dest = CloudDestination(name="minio", provider="s3", endpoint="h:9000", bucket="bk",
                             access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
@@ -90,7 +91,7 @@ def test_run_sync_sync_wires_service(monkeypatch, tmp_path):
     conn = DbConnection(name="c", type="pg")
     db.add(conn); db.commit(); db.refresh(conn)
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                          file_path="pg.sql.gz", started_at=datetime.utcnow())
+                          file_path="pg.sql.gz", started_at=utcnow())
     db.add(backup); db.commit(); db.refresh(backup)
     dest = CloudDestination(name="m", provider="s3", endpoint="h:9000", bucket="bk",
                             access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"))

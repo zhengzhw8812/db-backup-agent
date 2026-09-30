@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime
+from app.core.clock import utcnow
 
 
 @pytest.fixture
@@ -13,7 +14,7 @@ def authed(client):
         conn = DbConnection(name="c", type="pg")
         db.add(conn); db.commit(); db.refresh(conn)
         backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                              file_path="pg.sql.gz", checksum="x", started_at=datetime.utcnow())
+                              file_path="pg.sql.gz", checksum="x", started_at=utcnow())
         db.add(backup); db.commit()
     finally:
         db.close()
@@ -59,7 +60,7 @@ def test_restore_rejects_non_success_backup(authed):
     from app.db.models import BackupRecord, DbConnection
     db = _session._SessionLocal()
     conn_id = db.query(DbConnection).first().id
-    failed = BackupRecord(connection_id=conn_id, trigger="manual", status="failed", started_at=datetime.utcnow())
+    failed = BackupRecord(connection_id=conn_id, trigger="manual", status="failed", started_at=utcnow())
     db.add(failed); db.commit(); fid = failed.id
     db.close()
     r = authed.post("/api/v1/restore", json={"backup_record_id": fid, "target_connection_id": conn_id})
@@ -75,7 +76,7 @@ def test_restore_rejects_when_already_running(authed):
     backup = db.query(BackupRecord).first()
     conn_id = db.query(DbConnection).first().id
     db.add(RestoreRecord(backup_record_id=backup.id, target_connection_id=conn_id,
-                         status="running", started_at=datetime.utcnow()))
+                         status="running", started_at=utcnow()))
     db.commit(); backup_id = backup.id; db.close()
     r = authed.post("/api/v1/restore", json={"backup_record_id": backup_id, "target_connection_id": conn_id})
     assert r.status_code == 409
@@ -89,7 +90,7 @@ def test_list_and_cancel(authed, monkeypatch):
     backup = db.query(BackupRecord).first()
     conn_id = db.query(DbConnection).first().id
     rec = RestoreRecord(backup_record_id=backup.id, target_connection_id=conn_id,
-                        status="running", started_at=datetime.utcnow())
+                        status="running", started_at=utcnow())
     db.add(rec); db.commit(); rid = rec.id; db.close()
     listed = authed.get("/api/v1/restore").json()
     assert any(r["id"] == rid for r in listed)

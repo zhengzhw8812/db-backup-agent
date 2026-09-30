@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select, case
 from sqlalchemy.orm import Session
 from app.db.models import BackupRecord, DbConnection
+from app.core.clock import utcnow
 
 
 def stats(db: Session) -> dict:
@@ -23,7 +24,7 @@ def stats(db: Session) -> dict:
 
 
 def trends(db: Session, days: int = 30) -> dict:
-    since = datetime.utcnow() - timedelta(days=days)
+    since = utcnow() - timedelta(days=days)
     rows = db.query(
         func.date(BackupRecord.started_at).label("d"),
         BackupRecord.status,

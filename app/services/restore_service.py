@@ -12,6 +12,7 @@ from app.core.fsutil import safe_remove
 from app.adapters.base import get_adapter, BackupCancelled
 from app.services.backup_service import _conn_info
 from app.workers.progress import ProgressReporter
+from app.core.clock import utcnow
 
 
 def run_restore(
@@ -22,7 +23,7 @@ def run_restore(
     reporter: ProgressReporter,
     backup_dir: Path,
     restore_record_id: int,
-    now_fn=datetime.utcnow,
+    now_fn=utcnow,
 ) -> RestoreRecord:
     """对一条已存在的 running 恢复记录执行:校验 → 解压 → 还原,并写入终态。
 

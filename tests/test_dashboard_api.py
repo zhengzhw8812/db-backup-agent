@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import pytest
+from app.core.clock import utcnow
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def _seed():
     db = _session._SessionLocal()
     pg = DbConnection(name="pg", type="pg"); my = DbConnection(name="my", type="mysql")
     db.add_all([pg, my]); db.commit(); db.refresh(pg); db.refresh(my)
-    now = datetime.utcnow()
+    now = utcnow()
     db.add_all([
         BackupRecord(connection_id=pg.id, trigger="manual", status="success", size=100, started_at=now),
         BackupRecord(connection_id=pg.id, trigger="manual", status="success", size=200, started_at=now),

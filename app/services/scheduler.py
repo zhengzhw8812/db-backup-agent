@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db import session as _session
 from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection
 from app.services.locks import has_running_backup
+from app.core.clock import utcnow
 
 
 async def run_scheduled_backup(app, connection_id: int, schedule_id: int) -> None:
@@ -41,7 +42,7 @@ async def run_scheduled_backup(app, connection_id: int, schedule_id: int) -> Non
                 if rec is not None:
                     rec.status = "failed"
                     rec.error = "投递到队列失败"
-                    rec.finished_at = datetime.utcnow()
+                    rec.finished_at = utcnow()
             db.commit()
         finally:
             db.close()

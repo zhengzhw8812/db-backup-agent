@@ -13,6 +13,7 @@ from app.schemas.restore import RestoreRequest, RestoreRunResponse, RestoreOut
 from app.services.locks import has_running_restore
 from app.workers.progress import request_cancel
 from app.routers._sse import event_stream
+from app.core.clock import utcnow
 
 router = APIRouter()
 
@@ -41,7 +42,7 @@ async def run_restore_route(payload: RestoreRequest, request: Request,
     if has_running_restore(db, target.id) is not None:
         raise HTTPException(status_code=409, detail="该目标连接已有恢复在运行")
     record = RestoreRecord(backup_record_id=backup.id, target_connection_id=target.id,
-                           status="running", started_at=datetime.utcnow())
+                           status="running", started_at=utcnow())
     db.add(record); db.commit(); db.refresh(record)
     try:
         arq = await _get_arq(request.app)
@@ -49,7 +50,7 @@ async def run_restore_route(payload: RestoreRequest, request: Request,
     except Exception:
         record.status = "failed"
         record.error = "投递到队列失败"
-        record.finished_at = datetime.utcnow()
+        record.finished_at = utcnow()
         db.commit()
         raise HTTPException(status_code=503, detail="投递到队列失败,请稍后重试")
     return RestoreRunResponse(record_id=record.id, status=record.status)

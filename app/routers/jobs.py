@@ -14,6 +14,7 @@ from app.services.locks import has_running_backup
 from app.services.backup_service import enqueue_backup
 from app.workers.progress import request_cancel
 from app.routers._sse import event_stream
+from app.core.clock import utcnow
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def run_now(payload: BackupRunRequest, request: Request, db: Session = Dep
         for r in records:
             r.status = "failed"
             r.error = "投递到队列失败"
-            r.finished_at = datetime.utcnow()
+            r.finished_at = utcnow()
         db.commit()
         raise HTTPException(status_code=503, detail="投递到队列失败,请稍后重试")
     return JobRunResponse(

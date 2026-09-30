@@ -1,6 +1,7 @@
 from sqlalchemy import inspect
 from app.db.session import init_engine, create_all
 import app.db.models  # noqa  确保模型已注册
+from app.core.clock import utcnow
 
 
 def test_all_tables_created(tmp_path):
@@ -45,10 +46,10 @@ def test_restore_record_persists(tmp_path):
     conn = DbConnection(name="c", type="pg")
     db.add(conn); db.commit(); db.refresh(conn)
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                          started_at=datetime.utcnow())
+                          started_at=utcnow())
     db.add(backup); db.commit(); db.refresh(backup)
     rec = RestoreRecord(backup_record_id=backup.id, target_connection_id=conn.id,
-                        status="running", started_at=datetime.utcnow())
+                        status="running", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     got = db.get(RestoreRecord, rec.id)
     assert got is not None

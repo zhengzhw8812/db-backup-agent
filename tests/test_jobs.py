@@ -6,6 +6,7 @@ from app.db.models import DbConnection, BackupRecord
 from app.core.crypto import Crypto
 from cryptography.fernet import Fernet
 from app.workers.jobs import _run_backup_sync
+from app.core.clock import utcnow
 
 
 class FakeAdapter:
@@ -32,7 +33,7 @@ def test_run_backup_sync_wires_service(monkeypatch, tmp_path):
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg", password_enc=Crypto(key.encode("ascii")).encrypt("pw"))
     db.add(conn); db.commit(); db.refresh(conn)
-    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow())
+    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=utcnow())
     db.add(record); db.commit(); db.refresh(record)
     conn_id, record_id = conn.id, record.id
     db.close()
@@ -59,7 +60,7 @@ def test_backup_worker_runs_retention_and_notify(monkeypatch, tmp_path):
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg", password_enc=Crypto(key.encode("ascii")).encrypt("pw"))
     db.add(conn); db.commit(); db.refresh(conn)
-    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow())
+    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=utcnow())
     db.add(record); db.commit(); db.refresh(record)
     conn_id, record_id = conn.id, record.id
     db.close()

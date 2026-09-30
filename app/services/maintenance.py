@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.models import BackupRecord, RestoreRecord, DbConnection
+from app.core.clock import utcnow
 
 _STALE_MSG = "进程重启时仍为 running(判定为异常终止)"
 
@@ -59,12 +60,12 @@ def reap_stale_running(db: Session) -> int:
     for rec in db.query(BackupRecord).filter(BackupRecord.status == "running").all():
         rec.status = "failed"
         rec.error = _STALE_MSG
-        rec.finished_at = datetime.utcnow()
+        rec.finished_at = utcnow()
         count += 1
     for rec in db.query(RestoreRecord).filter(RestoreRecord.status == "running").all():
         rec.status = "failed"
         rec.error = _STALE_MSG
-        rec.finished_at = datetime.utcnow()
+        rec.finished_at = utcnow()
         count += 1
     if count:
         db.commit()

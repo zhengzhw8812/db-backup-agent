@@ -10,6 +10,7 @@ from app.core.crypto import Crypto
 from cryptography.fernet import Fernet
 from app.services.backup_service import run_backup
 from app.workers.progress import ProgressReporter
+from app.core.clock import utcnow
 
 
 class FakeAdapter:
@@ -48,7 +49,7 @@ def _setup(tmp_path, monkeypatch):
     conn = DbConnection(name="c", type="pg", host="h", port=5432, db_name="d",
                         username="u", password_enc=crypto.encrypt("pw"))
     db.add(conn); db.commit(); db.refresh(conn)
-    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow())
+    record = BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=utcnow())
     db.add(record); db.commit(); db.refresh(record)
     return db, conn, crypto, tmp_path / "backups", record.id
 
@@ -193,7 +194,7 @@ def test_run_backup_uses_record_db_name(tmp_path, monkeypatch):
     from app.db.models import BackupRecord
     from datetime import datetime
     rec = BackupRecord(connection_id=conn.id, trigger="manual", status="running",
-                       db_name="chosen_db", started_at=datetime.utcnow())
+                       db_name="chosen_db", started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
 
     seen = {}

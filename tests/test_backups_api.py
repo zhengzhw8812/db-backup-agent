@@ -1,6 +1,7 @@
 import pytest
 from app.db import session as _session
 from app.db.models import BackupRecord
+from app.core.clock import utcnow
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def _make_record(file_relpath="pg_1_1.sql.gz", content=b"x"):
     db = _session._SessionLocal()
     rec = BackupRecord(connection_id=1, trigger="manual", status="success",
                        file_path=file_relpath, size=len(content), checksum="c",
-                       started_at=__import__("datetime").datetime.utcnow())
+                       started_at=utcnow())
     db.add(rec); db.commit(); db.refresh(rec)
     rid = rec.id
     db.close()

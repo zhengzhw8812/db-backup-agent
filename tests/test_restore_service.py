@@ -10,6 +10,7 @@ from app.core.archive import compress_file, sha256_of_file
 from cryptography.fernet import Fernet
 from app.services.restore_service import run_restore
 from app.workers.progress import ProgressReporter
+from app.core.clock import utcnow
 
 
 class FakeRestoreAdapter:
@@ -56,10 +57,10 @@ def _setup(tmp_path, monkeypatch, adapter=None):
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
                           file_path=gz_name, size=gz.stat().st_size,
                           checksum=sha256_of_file(gz),
-                          started_at=datetime.utcnow(), finished_at=datetime.utcnow())
+                          started_at=utcnow(), finished_at=utcnow())
     db.add(backup); db.commit(); db.refresh(backup)
     restore = RestoreRecord(backup_record_id=backup.id, target_connection_id=conn.id,
-                            status="running", started_at=datetime.utcnow())
+                            status="running", started_at=utcnow())
     db.add(restore); db.commit(); db.refresh(restore)
     return db, conn, crypto, bdir, backup, restore.id
 
@@ -120,10 +121,10 @@ def test_run_restore_sync_wires_service(monkeypatch, tmp_path):
     backup = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
                           file_path=gz_name, size=gz.stat().st_size,
                           checksum=sha256_of_file(gz),
-                          started_at=datetime.utcnow(), finished_at=datetime.utcnow())
+                          started_at=utcnow(), finished_at=utcnow())
     db.add(backup); db.commit(); db.refresh(backup)
     restore = RestoreRecord(backup_record_id=backup.id, target_connection_id=conn.id,
-                            status="running", started_at=datetime.utcnow())
+                            status="running", started_at=utcnow())
     db.add(restore); db.commit(); db.refresh(restore)
     bid, cid, rid = backup.id, conn.id, restore.id
     db.close()

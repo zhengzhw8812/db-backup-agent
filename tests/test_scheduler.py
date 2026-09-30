@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from app.core.clock import utcnow
 
 
 def test_run_scheduled_backup_creates_record_and_enqueues(monkeypatch, tmp_path):
@@ -66,7 +67,7 @@ def test_run_scheduled_backup_skips_when_already_running(monkeypatch, tmp_path):
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
     conn_id = conn.id
-    db.add(BackupRecord(connection_id=conn_id, trigger="manual", status="running", started_at=datetime.utcnow()))
+    db.add(BackupRecord(connection_id=conn_id, trigger="manual", status="running", started_at=utcnow()))
     db.commit(); db.close()
 
     enqueued = []

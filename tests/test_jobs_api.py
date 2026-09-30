@@ -1,4 +1,5 @@
 import pytest
+from app.core.clock import utcnow
 
 
 @pytest.fixture
@@ -87,7 +88,7 @@ def test_list_jobs_and_cancel(authed, monkeypatch):
     from datetime import datetime
     db = _session._SessionLocal()
     conn_id = db.query(DbConnection).first().id
-    rec = BackupRecord(connection_id=conn_id, trigger="manual", status="running", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn_id, trigger="manual", status="running", started_at=utcnow())
     db.add(rec); db.commit(); rid = rec.id; db.close()
     listed = authed.get("/api/v1/jobs").json()
     assert any(j["id"] == rid for j in listed)
@@ -104,7 +105,7 @@ def test_run_rejects_when_already_running(authed):
     from datetime import datetime
     db = _session._SessionLocal()
     conn = db.query(DbConnection).first()
-    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=datetime.utcnow()))
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="running", started_at=utcnow()))
     db.commit(); conn_id = conn.id; db.close()
     r = authed.post("/api/v1/backups/run", json={"connection_id": conn_id})
     assert r.status_code == 409
@@ -136,7 +137,7 @@ def test_events_emits_terminal_state_immediately(authed):
     from datetime import datetime
     db = _session._SessionLocal()
     conn = db.query(DbConnection).first()
-    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=datetime.utcnow())
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
     db.add(rec); db.commit(); rid = rec.id; db.close()
     r = authed.get(f"/api/v1/jobs/{rid}/events")
     assert r.status_code == 200
