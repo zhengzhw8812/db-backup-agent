@@ -19,7 +19,8 @@ def _to_out(cfg: NotificationConfig) -> NotificationSettingsOut:
         smtp_from=cfg.smtp_from, recipients=cfg.recipients,
         wechat_enabled=cfg.wechat_enabled, wechat_corp_id=cfg.wechat_corp_id,
         wechat_agent_id=cfg.wechat_agent_id, notify_on_success=cfg.notify_on_success,
-        notify_on_failure=cfg.notify_on_failure, created_at=cfg.created_at,
+        notify_on_failure=cfg.notify_on_failure, notify_watchdog=cfg.notify_watchdog,
+        created_at=cfg.created_at,
     )
 
 
@@ -29,7 +30,7 @@ def _defaults_out() -> NotificationSettingsOut:
         email_enabled=False, smtp_host=None, smtp_port=None, smtp_ssl=False,
         smtp_starttls=True, smtp_user=None, smtp_from=None, recipients=None,
         wechat_enabled=False, wechat_corp_id=None, wechat_agent_id=None,
-        notify_on_success=True, notify_on_failure=True, created_at=datetime.now(timezone.utc),
+        notify_on_success=True, notify_on_failure=True, notify_watchdog=True, created_at=datetime.now(timezone.utc),
     )
 
 
@@ -62,6 +63,7 @@ def put_notifications(payload: NotificationSettings, request: Request,
     cfg.wechat_agent_id = payload.wechat_agent_id
     cfg.notify_on_success = payload.notify_on_success
     cfg.notify_on_failure = payload.notify_on_failure
+    cfg.notify_watchdog = payload.notify_watchdog
     # 凭据:非空才更新(避免空串覆盖已存密文)
     if payload.smtp_password:
         cfg.smtp_password_enc = crypto.encrypt(payload.smtp_password)

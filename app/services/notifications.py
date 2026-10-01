@@ -101,3 +101,30 @@ def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record
         except Exception:
             sent["wechat"] = False
     return sent
+
+
+def notify_generic(db: Session, crypto: Crypto, *, kind: str, subject: str, content: str) -> dict:
+    """通用通知(看门狗失联告警等)。kind 决定开关列:watchdog→notify_watchdog,
+    failure→notify_on_failure。渠道独立 try/except,绝不抛出。"""
+    cfg = db.query(NotificationConfig).first()
+    if cfg is None:
+        return {"email": False, "wechat": False}
+    toggle = {"watchdog": cfg.notify_watchdog, "failure": cfg.notify_on_failure}.get(kind, True)
+    if not toggle:
+        return {"email": False, "wechat": False}
+    sent = {"email": False, "wechat": False}
+    if cfg.email_enabled:
+        try:
+            pw = crypto.decrypt(cfg.smtp_password_enc) if cfg.smtp_password_enc else ""
+            _send_email(cfg, subject, content, pw)
+            sent["email"] = True
+        except Exception:
+            pass
+    if cfg.wechat_enabled:
+        try:
+            secret = crypto.decrypt(cfg.wechat_secret_enc) if cfg.wechat_secret_enc else ""
+            _send_wechat(cfg, content, secret)
+            sent["wechat"] = True
+        except Exception:
+            pass
+    return sent

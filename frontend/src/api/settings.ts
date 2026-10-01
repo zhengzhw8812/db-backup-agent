@@ -16,6 +16,7 @@ export interface NotificationSettings {
   wechat_secret: string | null  // 仅写入
   notify_on_success: boolean
   notify_on_failure: boolean
+  notify_watchdog: boolean
 }
 
 export const getNotifications = () => client.get<NotificationSettings>('/settings/notifications')

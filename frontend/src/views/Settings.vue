@@ -11,7 +11,7 @@ const f = ref<NotificationSettings>({
   email_enabled: false, smtp_host: null, smtp_port: 465, smtp_ssl: true, smtp_starttls: false,
   smtp_user: null, smtp_password: null, smtp_from: null, recipients: null,
   wechat_enabled: false, wechat_corp_id: null, wechat_agent_id: null, wechat_secret: null,
-  notify_on_success: true, notify_on_failure: true,
+  notify_on_success: true, notify_on_failure: true, notify_watchdog: true,
 })
 
 async function load() {
@@ -65,6 +65,7 @@ onMounted(() => { load(); loadVerify() })
           <n-form-item label="启用邮件"><n-switch v-model:value="f.email_enabled" /></n-form-item>
           <n-form-item label="成功通知"><n-switch v-model:value="f.notify_on_success" /></n-form-item>
           <n-form-item label="失败通知"><n-switch v-model:value="f.notify_on_failure" /></n-form-item>
+          <n-form-item label="失联告警"><n-switch v-model:value="f.notify_watchdog" /></n-form-item>
         </n-space>
         <template v-if="f.email_enabled">
           <n-space>

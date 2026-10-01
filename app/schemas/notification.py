@@ -19,6 +19,7 @@ class NotificationSettings(BaseModel):
     wechat_secret: str | None = None        # 仅写入;Out 不返回
     notify_on_success: bool = True
     notify_on_failure: bool = True
+    notify_watchdog: bool = True
 
 
 class NotificationSettingsOut(BaseModel):
@@ -35,6 +36,7 @@ class NotificationSettingsOut(BaseModel):
     wechat_agent_id: str | None
     notify_on_success: bool
     notify_on_failure: bool
+    notify_watchdog: bool
     created_at: datetime
     # 不含 smtp_password / wechat_secret
 

@@ -139,6 +139,7 @@ class NotificationConfig(Base):
     wechat_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)    # Fernet
     notify_on_success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_on_failure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_watchdog: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
