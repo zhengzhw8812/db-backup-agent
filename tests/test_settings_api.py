@@ -61,6 +61,7 @@ def test_verify_settings_get_put(authed):
 
 def test_notification_test_endpoint_per_channel(authed, monkeypatch):
     """无任何渠道启用 → 400;仅邮件启用且成功 → email=true 其余 null。"""
+    from app.db import session as _session
     from app.db.models import NotificationConfig
     from app.services import notifications as nm
 
@@ -77,6 +78,7 @@ def test_notification_test_endpoint_per_channel(authed, monkeypatch):
 
 
 def test_notification_test_endpoint_all_fail(authed):
+    from app.db import session as _session
     from app.db.models import NotificationConfig
 
     db = _session._SessionLocal()
