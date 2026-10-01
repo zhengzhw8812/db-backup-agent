@@ -213,3 +213,29 @@ def test_watchdog_five_minute_cron(env):
     db.commit()
     asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
     assert len(alerts) == 1
+
+
+def test_watchdog_feishu_only_send_failure_retries(env, monkeypatch):
+    """仅飞书渠道:发送失败 → 不写去重键(下小时重试);成功 → 写。"""
+    import app.services.notifications as nm
+    from app.services.settings_service import get_setting
+
+    db, conn, sched, alerts = env
+    db.add(NotificationConfig(feishu_enabled=True))
+    db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
+                        started_at=utcnow() - timedelta(days=3)))
+    db.commit()
+
+    # 飞书发送失败:分发器全 False → 不写去重键(下一小时重试)
+    monkeypatch.setattr("app.services.notifications.notify_generic",
+                        lambda db, crypto, *, kind, subject, content: {"email": False, "wechat": False,
+                                                                        "feishu": False, "serverchan": False})
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert get_setting(db, f"watchdog:{sched.id}") is None
+
+    # 飞书发送成功:feishu=True → 写去重键
+    monkeypatch.setattr("app.services.notifications.notify_generic",
+                        lambda db, crypto, *, kind, subject, content: {"email": False, "wechat": False,
+                                                                        "feishu": True, "serverchan": False})
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert get_setting(db, f"watchdog:{sched.id}") is not None

@@ -243,7 +243,8 @@ async def watchdog_check(app) -> None:
                 # 去重键只记录"真正送达"的告警:渠道配置缺失视为投递到空;
                 # 发送全失败 → 不写键,下一小时自动重试
                 cfg = db.query(NotificationConfig).first()
-                channels_configured = bool(cfg and (cfg.email_enabled or cfg.wechat_enabled))
+                channels_configured = bool(cfg and (cfg.email_enabled or cfg.wechat_enabled
+                                     or cfg.feishu_enabled or cfg.serverchan_enabled))
                 if any(sent.values()) or not channels_configured:
                     set_setting(db, f"watchdog:{s.id}", now.isoformat())
             except Exception as exc:
