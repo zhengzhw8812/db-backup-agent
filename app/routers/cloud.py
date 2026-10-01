@@ -29,7 +29,15 @@ async def _get_arq(app):
 
 @router.get("/cloud-destinations", response_model=list[CloudDestinationOut])
 def list_destinations(db: Session = Depends(get_db), _=Depends(get_current_account)):
-    return db.query(CloudDestination).order_by(CloudDestination.id.desc()).all()
+    from app.services import mount_service
+
+    rows = db.query(CloudDestination).order_by(CloudDestination.id.desc()).all()
+    out = []
+    for d in rows:
+        item = CloudDestinationOut.model_validate(d)
+        item.mounted = (mount_service.is_mounted(d.id) if d.provider in ("nfs", "smb") else None)
+        out.append(item)
+    return out
 
 
 @router.post("/cloud-destinations", response_model=CloudDestinationOut, status_code=201)
@@ -44,8 +52,19 @@ def create_destination(payload: CloudDestinationCreate, request: Request,
         access_key_enc=crypto.encrypt(payload.access_key),
         secret_enc=crypto.encrypt(payload.secret),
         prefix=payload.prefix, secure=payload.secure, enabled=payload.enabled,
+        mount_config=payload.mount.model_dump_json(exclude_none=True) if payload.mount else None,
+        mount_password_enc=crypto.encrypt(payload.mount_password) if payload.mount_password else None,
     )
     db.add(d); db.commit(); db.refresh(d)
+    if d.provider in ("nfs", "smb"):
+        # 挂载失败 → 回滚整行,避免留下"永远挂不上"的死配置
+        from app.services import mount_service
+
+        try:
+            mount_service.mount_destination(d, crypto)
+        except Exception as exc:
+            db.delete(d); db.commit()
+            raise HTTPException(status_code=400, detail=str(exc))
     return d
 
 
@@ -54,6 +73,10 @@ def delete_destination(dest_id: int, db: Session = Depends(get_db), _=Depends(ge
     d = db.get(CloudDestination, dest_id)
     if d is None:
         raise HTTPException(status_code=404, detail="云目标不存在")
+    if d.provider in ("nfs", "smb"):
+        from app.services import mount_service
+
+        mount_service.unmount_destination(d.id)
     db.delete(d); db.commit()
 
 
@@ -64,11 +87,18 @@ def test_destination(dest_id: int, request: Request,
     if d is None:
         raise HTTPException(status_code=404, detail="云目标不存在")
     crypto = request.app.state.crypto
-    cfg = CloudConfig(
-        endpoint=d.endpoint, access_key=crypto.decrypt(d.access_key_enc),
-        secret_key=crypto.decrypt(d.secret_enc), bucket=d.bucket,
-        region=d.region, secure=d.secure, prefix=d.prefix,
-    )
+    if d.provider in ("nfs", "smb"):
+        from app.services import mount_service
+
+        mount_service.mount_destination(d, crypto)  # 幂等:已挂载则跳过
+        cfg = CloudConfig(endpoint="", access_key="", secret_key="", bucket="",
+                          prefix=d.prefix, mount_point=str(mount_service.mount_point(d.id)))
+    else:
+        cfg = CloudConfig(
+            endpoint=d.endpoint, access_key=crypto.decrypt(d.access_key_enc),
+            secret_key=crypto.decrypt(d.secret_enc), bucket=d.bucket,
+            region=d.region, secure=d.secure, prefix=d.prefix,
+        )
     try:
         get_storage(d.provider).test(cfg)
     except Exception as exc:

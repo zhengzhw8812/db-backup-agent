@@ -13,6 +13,7 @@ class CloudConfig:
     region: str | None = None
     secure: bool = True
     prefix: str = ""
+    mount_point: str | None = None   # nfs/smb:已挂载目录(nfs/smb 适配器专用)
 
 
 class StorageAdapter(Protocol):

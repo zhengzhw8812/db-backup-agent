@@ -115,3 +115,50 @@ def test_sync_run_rejects_non_success(authed):
     failed = BackupRecord(connection_id=conn.id, trigger="manual", status="failed", started_at=utcnow())
     db.add(failed); db.commit(); fid = failed.id; db.close()
     assert authed.post("/api/v1/sync/run", json={"backup_record_id": fid}).status_code == 400
+
+
+def test_create_nfs_destination_mounts_and_lists_mounted(authed, monkeypatch):
+    """创建 nfs 目的地:立即挂载;列表返回 mounted 标记;删除触发卸载。"""
+    import json as _json
+    from app.db.models import CloudDestination
+
+    calls = []
+    import app.services.mount_service as ms
+    monkeypatch.setattr(ms, "mount_destination", lambda d, cr: calls.append(("mount", d.id)))
+    monkeypatch.setattr(ms, "unmount_destination", lambda did: calls.append(("umount", did)))
+    monkeypatch.setattr(ms.os.path, "ismount", lambda p: True)
+
+    r = authed.post("/api/v1/cloud-destinations", json={
+        "name": "nas", "provider": "nfs",
+        "endpoint": "", "bucket": "",
+        "access_key": "x", "secret": "x",
+        "mount": {"server": "nas", "export": "/vol/bk", "version": "nfs4"},
+    })
+    assert r.status_code == 201, r.text
+    did = r.json()["id"]
+    assert ("mount", did) in calls
+
+    listing = authed.get("/api/v1/cloud-destinations").json()
+    row = [x for x in listing if x["id"] == did][0]
+    assert row["provider"] == "nfs" and row["mounted"] is True
+
+    authed.delete(f"/api/v1/cloud-destinations/{did}")
+    assert ("umount", did) in calls
+
+
+def test_create_nfs_mount_failure_rejected(authed, monkeypatch):
+    """挂载失败 → 400,目的地不落库。"""
+    import app.services.mount_service as ms
+
+    def boom(d, cr):
+        raise RuntimeError("no route to host")
+
+    monkeypatch.setattr(ms, "mount_destination", boom)
+    r = authed.post("/api/v1/cloud-destinations", json={
+        "name": "bad", "provider": "nfs", "endpoint": "", "bucket": "",
+        "access_key": "x", "secret": "x",
+        "mount": {"server": "nas", "export": "/v"},
+    })
+    assert r.status_code == 400
+    assert "no route to host" in r.json()["detail"]
+    assert authed.get("/api/v1/cloud-destinations").json() == []

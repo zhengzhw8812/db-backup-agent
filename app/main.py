@@ -23,6 +23,15 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    # NFS/SMB 目的地启动重挂(单目的地失败记日志继续)
+    from app.services.mount_service import remount_all
+
+    _db2 = next(get_db())
+    try:
+        remount_all(_db2, app.state.crypto)
+    finally:
+        _db2.close()
+
     from app.services.scheduler import SchedulerService
     sched = SchedulerService(app)
     if settings.scheduler_enabled:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, h, onMounted } from 'vue'
+import { ref, computed, h, onMounted } from 'vue'
 import { NCard, NDataTable, NButton, NSpace, NModal, NForm, NFormItem, NInput, NSwitch, NTag, NSelect, NPopconfirm, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import * as cloudApi from '../api/cloud'
@@ -18,7 +18,9 @@ const selConn = ref<number | null>(null)
 const selDest = ref<number | null>(null)
 const selBackup = ref<number | null>(null)
 
-const destForm = ref({ name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true })
+const destForm = ref({ name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true,
+  mount: { server: '', export: '', version: 'nfs4', share: '', domain: '', username: '' }, mount_password: '' })
+const isShare = computed(() => destForm.value.provider === 'nfs' || destForm.value.provider === 'smb')
 
 async function load() {
   try {
@@ -31,7 +33,8 @@ async function load() {
 async function saveDest() {
   try {
     await cloudApi.createDestination({ ...destForm.value, region: destForm.value.region || null })
-    msg.success('已添加'); showDest.value = false; destForm.value = { name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true }
+    msg.success('已添加'); showDest.value = false; destForm.value = { name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true,
+  mount: { server: '', export: '', version: 'nfs4', share: '', domain: '', username: '' }, mount_password: '' }
     await load()
   } catch (e: any) { msg.error(e.response?.data?.detail || '失败') }
 }
@@ -65,6 +68,7 @@ function connName(id: number) { return connOptions.value.find(c => c.value === i
 const destCols: DataTableColumns<CloudDestination> = [
   { title: '名称', key: 'name' },
   { title: '类型', key: 'provider' },
+  { title: '挂载', key: 'mounted', render: (r: any) => r.mounted == null ? '—' : h(NTag, { type: r.mounted ? 'success' : 'error', size: 'small', bordered: false }, { default: () => r.mounted ? '已挂载' : '未挂载' }) },
   { title: 'Endpoint', key: 'endpoint' },
   { title: '桶', key: 'bucket' },
   { title: '前缀', key: 'prefix' },
@@ -110,6 +114,31 @@ onMounted(load)
   <n-modal v-model:show="showDest" preset="card" title="添加云存储目标(MinIO / S3 兼容)" style="width:520px">
     <n-form label-placement="top">
       <n-form-item label="名称"><n-input v-model:value="destForm.name" /></n-form-item>
+        <n-form-item label="类型">
+          <n-radio-group v-model:value="destForm.provider">
+            <n-radio-button value="s3">S3 / MinIO</n-radio-button>
+            <n-radio-button value="nfs">NFS</n-radio-button>
+            <n-radio-button value="smb">SMB</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
+        <template v-if="destForm.provider === 'nfs'">
+          <n-form-item label="服务器"><n-input v-model:value="destForm.mount.server" placeholder="192.168.1.10" /></n-form-item>
+          <n-form-item label="导出路径"><n-input v-model:value="destForm.mount.export" placeholder="/export/backup" /></n-form-item>
+          <n-form-item label="协议版本">
+            <n-radio-group v-model:value="destForm.mount.version">
+              <n-radio-button value="nfs4">NFSv4</n-radio-button>
+              <n-radio-button value="nfs3">NFSv3</n-radio-button>
+            </n-radio-group>
+          </n-form-item>
+        </template>
+        <template v-if="destForm.provider === 'smb'">
+          <n-form-item label="服务器"><n-input v-model:value="destForm.mount.server" placeholder="192.168.1.10" /></n-form-item>
+          <n-form-item label="共享名"><n-input v-model:value="destForm.mount.share" placeholder="backup" /></n-form-item>
+          <n-form-item label="域(可选)"><n-input v-model:value="destForm.mount.domain" /></n-form-item>
+          <n-form-item label="用户名"><n-input v-model:value="destForm.mount.username" /></n-form-item>
+          <n-form-item label="密码"><n-input v-model:value="destForm.mount_password" type="password" show-password-on="click" /></n-form-item>
+        </template>
+        <template v-if="destForm.provider === 's3'">
       <n-space>
         <n-form-item label="Endpoint (host:port)"><n-input v-model:value="destForm.endpoint" placeholder="localhost:9000" /></n-form-item>
         <n-form-item label="桶名"><n-input v-model:value="destForm.bucket" /></n-form-item>
@@ -126,6 +155,7 @@ onMounted(load)
         <n-form-item label="HTTPS"><n-switch v-model:value="destForm.secure" /></n-form-item>
         <n-form-item label="启用"><n-switch v-model:value="destForm.enabled" /></n-form-item>
       </n-space>
+      </template>
       <n-button type="primary" block @click="saveDest">保存</n-button>
     </n-form>
   </n-modal>
