@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
+import { NCard, NList, NListItem, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
 import * as setApi from '../api/settings'
+import * as sbApi from '../api/self-backup'
 import type { NotificationSettings } from '../api/settings'
 
 const msg = useMessage()
@@ -56,7 +57,22 @@ async function saveVerify() {
   }
 }
 
-onMounted(() => { load(); loadVerify() })
+const snaps = ref<Array<{ name: string; size: number; created_at: string }>>([])
+const fmtSize = (n: number) => n < 1024 ? `${n}B` : n < 1048576 ? `${(n/1024).toFixed(1)}KB` : `${(n/1048576).toFixed(1)}MB`
+
+async function loadSnaps() {
+  try { snaps.value = (await sbApi.listSelfBackups()).data } catch { /* 静默 */ }
+}
+
+async function runSelfBackupNow() {
+  try {
+    const r = await sbApi.runSelfBackup()
+    msg.success(`自备份完成:${r.data.name}`)
+    await loadSnaps()
+  } catch (e: any) { msg.error(e.response?.data?.detail || '自备份失败') }
+}
+
+onMounted(() => { load(); loadVerify(); loadSnaps() })
 </script>
 
 <template>
@@ -126,6 +142,23 @@ onMounted(() => { load(); loadVerify() })
         </n-form-item>
         <n-text depth="3">开启后每周一 03:30 自动校验备份文件完整性(gzip CRC + 校验和),损坏的备份会触发失败通知。</n-text>
       </n-form>
+    </n-card>
+
+    <n-card title="配置库自备份" :bordered="false">
+      <n-space vertical :size="8">
+        <n-space align="center">
+          <n-button type="primary" @click="runSelfBackupNow">立即备份</n-button>
+          <n-text depth="3">每日 04:00 自动备份配置库(VACUUM INTO 一致性快照),保留最近 7 份。恢复:下载快照后停容器、覆盖 data/sqlite/app.db、再启动。</n-text>
+        </n-space>
+        <n-list v-if="snaps.length" bordered>
+          <n-list-item v-for="s in snaps" :key="s.name">
+            <n-space justify="space-between" style="width: 100%">
+              <span>{{ s.name }}({{ fmtSize(s.size) }})</span>
+              <n-button size="small" tag="a" :href="sbApi.downloadUrl(s.name)" target="_blank">下载</n-button>
+            </n-space>
+          </n-list-item>
+        </n-list>
+      </n-space>
     </n-card>
 
     <n-button type="primary" :loading="loading" :disabled="!loaded" @click="save">保存设置</n-button>

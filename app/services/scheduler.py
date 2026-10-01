@@ -83,6 +83,9 @@ class SchedulerService:
 
             self._sched.add_job(watchdog_check, IntervalTrigger(hours=1),
                                 args=[self.app], id="watchdog_check", replace_existing=True)
+            self._sched.add_job(self_backup_daily,
+                                CronTrigger(hour=4, minute=0),
+                                args=[self.app], id="self_backup_daily", replace_existing=True)
             self._sched.add_job(auto_verify_weekly,
                                 CronTrigger(day_of_week="mon", hour=3, minute=30),
                                 args=[self.app], id="auto_verify_weekly", replace_existing=True)
@@ -252,5 +255,23 @@ async def watchdog_check(app) -> None:
                 except Exception:
                     pass
                 continue
+    finally:
+        db.close()
+
+async def self_backup_daily(app) -> None:
+    """每日 04:00 配置库自备份(VACUUM INTO 快照,保留 7 份)。"""
+    from app.config import settings
+    from app.services.self_backup import run_self_backup
+
+    db = _session._SessionLocal()
+    try:
+        run_self_backup(settings.data_dir, db=db)
+    except Exception as exc:
+        try:
+            db.add(SystemLog(level="error", source="selfbackup",
+                             message=f"每日自备份失败:{exc}"))
+            db.commit()
+        except Exception:
+            pass
     finally:
         db.close()

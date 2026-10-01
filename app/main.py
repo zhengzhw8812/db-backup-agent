@@ -10,6 +10,7 @@ from app.db.session import init_engine, create_all, get_db
 from app.services.account_service import ensure_account
 from app.routers import health, auth, connections, jobs, backups, schedules, dashboard, restore, cloud, logs
 from app.routers import settings as settings_router
+from app.routers import self_backup as self_backup_router
 
 
 @asynccontextmanager
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(cloud.router, prefix="/api/v1", tags=["cloud"])
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
     app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
+    app.include_router(self_backup_router.router, prefix="/api/v1", tags=["self-backup"])
 
     # 生产:托管前端 SPA(仅当 static_dir 存在;dev 由 Vite 服务,测试无该目录 → 跳过)
     static_dir = settings.static_dir
