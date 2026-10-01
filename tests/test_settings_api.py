@@ -57,3 +57,30 @@ def test_verify_settings_get_put(authed):
     assert r.status_code == 200
     assert r.json() == {"auto_enabled": True}
     assert authed.get("/api/v1/settings/verify").json() == {"auto_enabled": True}
+
+
+def test_notification_test_endpoint_per_channel(authed, monkeypatch):
+    """无任何渠道启用 → 400;仅邮件启用且成功 → email=true 其余 null。"""
+    from app.db.models import NotificationConfig
+    from app.services import notifications as nm
+
+    r = authed.post("/api/v1/settings/notifications/test")
+    assert r.status_code == 400
+
+    monkeypatch.setattr(nm, "_send_email", lambda cfg, subject, body, pw: None)
+    db = _session._SessionLocal()
+    db.add(NotificationConfig(email_enabled=True))
+    db.commit(); db.close()
+    r = authed.post("/api/v1/settings/notifications/test")
+    assert r.status_code == 200
+    assert r.json() == {"email": True, "wechat": None, "feishu": None, "serverchan": None}
+
+
+def test_notification_test_endpoint_all_fail(authed):
+    from app.db.models import NotificationConfig
+
+    db = _session._SessionLocal()
+    db.add(NotificationConfig(email_enabled=True, smtp_host="bad", smtp_port=1,
+                              smtp_from="a@b.c", recipients="x@y.z"))
+    db.commit(); db.close()
+    assert authed.post("/api/v1/settings/notifications/test").status_code == 400

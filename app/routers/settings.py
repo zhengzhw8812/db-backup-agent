@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -93,3 +93,36 @@ def get_verify_settings(db: Session = Depends(get_db), _=Depends(get_current_acc
 def put_verify_settings(payload: VerifySettings, db: Session = Depends(get_db), _=Depends(get_current_account)):
     set_setting(db, "verify_auto_enabled", payload.auto_enabled)
     return VerifySettings(auto_enabled=payload.auto_enabled)
+
+
+@router.post("/settings/notifications/test")
+def test_notifications(request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    """向所有已启用渠道各发一条测试消息,逐渠道返回结果(null=未启用)。全部失败 → 400。"""
+    from app.services.notifications import (
+        _send_email, _send_wechat, _send_extras, NotificationConfig,
+    )
+
+    crypto = request.app.state.crypto
+    cfg = db.query(NotificationConfig).first()
+    if cfg is None:
+        raise HTTPException(status_code=400, detail="尚未配置任何通知渠道")
+    sent = {"email": None, "wechat": None, "feishu": None, "serverchan": None}
+    subject, body = "[测试] db-backup-agent", "这是一条测试通知,收到即表示渠道配置正确。"
+    if cfg.email_enabled:
+        try:
+            pw = crypto.decrypt(cfg.smtp_password_enc) if cfg.smtp_password_enc else ""
+            _send_email(cfg, subject, body, pw)
+            sent["email"] = True
+        except Exception:
+            sent["email"] = False
+    if cfg.wechat_enabled:
+        try:
+            secret = crypto.decrypt(cfg.wechat_secret_enc) if cfg.wechat_secret_enc else ""
+            _send_wechat(cfg, body, secret)
+            sent["wechat"] = True
+        except Exception:
+            sent["wechat"] = False
+    _send_extras(cfg, crypto, sent, title=subject, content=body)
+    if not any(v is True for v in sent.values()):
+        raise HTTPException(status_code=400, detail=f"全部启用渠道发送失败:{sent}")
+    return sent
