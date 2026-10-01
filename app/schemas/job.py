@@ -46,6 +46,9 @@ class BackupFileOut(BaseModel):
     duration_ms: int | None
     started_at: datetime
     finished_at: datetime | None
+    verify_status: str | None = None
+    verified_at: datetime | None = None
+    verify_error: str | None = None
 
     model_config = {"from_attributes": True}
 
