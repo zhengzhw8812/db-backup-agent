@@ -6,6 +6,7 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import * as connApi from '../api/connections'
+import { useStatusTag } from '../composables/useStatusTag'
 import type { Connection } from '../api/connections'
 import * as jobsApi from '../api/jobs'
 import type { Job } from '../api/jobs'
@@ -81,12 +82,7 @@ const fmtBytes = (n?: number | null) => {
   const i = Math.floor(Math.log(n) / Math.log(1024))
   return (n / Math.pow(1024, i)).toFixed(1) + ' ' + u[i]
 }
-const statusTag = (s: string) => {
-  const m: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
-    success: 'success', failed: 'error', running: 'info', cancelled: 'default',
-  }
-  return h(NTag, { type: m[s] || 'default', size: 'small', bordered: false }, { default: () => s })
-}
+const statusTag = useStatusTag()
 
 const verifyTag = (s: string | null) => {
   if (!s) return h(NTag, { type: 'default', size: 'small', bordered: false }, { default: () => '未验证' })

@@ -21,7 +21,7 @@ const router = createRouter({
         { path: 'logs', component: () => import('../views/Logs.vue') },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/:pathMatch(.*)*', component: () => import('../views/NotFound.vue') },
   ],
 })
 

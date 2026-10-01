@@ -2,10 +2,11 @@
 import { ref, h, computed, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NSelect, NSpace, NButton, NDrawer, NDrawerContent,
-  NTag, NModal, NInput, NSteps, NStep, NText, useMessage,
+  NModal, NInput, NSteps, NStep, NText, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import * as bkApi from '../api/backups'
+import { useStatusTag } from '../composables/useStatusTag'
 import type { BackupFile } from '../api/backups'
 import * as connApi from '../api/connections'
 import type { Connection } from '../api/connections'
@@ -94,10 +95,7 @@ function currentStep() {
 
 const fmtBytes = (n?: number | null) => { if (!n) return '—'; const u = ['B','KB','MB','GB']; const i = Math.floor(Math.log(n)/Math.log(1024)); return (n/Math.pow(1024,i)).toFixed(1)+' '+u[i] }
 const fmtMs = (ms?: number | null) => (ms == null ? '—' : (ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(1)}s`))
-const statusTag = (s: string) => {
-  const m: Record<string, 'success'|'warning'|'error'|'info'|'default'> = { success:'success', failed:'error', running:'info', cancelled:'default' }
-  return h(NTag, { type: m[s] || 'default', size: 'small', bordered: false }, { default: () => s })
-}
+const statusTag = useStatusTag()
 
 const restoreColumns: DataTableColumns<Restore> = [
   { title: '记录', key: 'id' },

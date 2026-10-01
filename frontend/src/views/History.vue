@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, h, onMounted } from 'vue'
-import { NCard, NDataTable, NTag, NButton, NSpace, NInput, useMessage } from 'naive-ui'
+import { NCard, NDataTable, NButton, NSpace, NInput, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import * as bkApi from '../api/backups'
+import { useStatusTag } from '../composables/useStatusTag'
 import type { BackupFile } from '../api/backups'
 import * as connApi from '../api/connections'
 import type { Connection } from '../api/connections'
@@ -22,10 +23,7 @@ function connLabel(id: number) { return conns.value.find(x => x.id === id)?.name
 function download(id: number) { window.open(bkApi.downloadUrl(id), '_blank') }
 const fmtMs = (ms?: number | null) => (ms == null ? '—' : (ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(1)}s`))
 const fmtBytes = (n?: number | null) => { if (!n) return '—'; const u = ['B','KB','MB','GB']; const i = Math.floor(Math.log(n)/Math.log(1024)); return (n/Math.pow(1024,i)).toFixed(1)+' '+u[i] }
-const statusTag = (s: string) => {
-  const m: Record<string, 'success'|'warning'|'error'|'info'|'default'> = { success:'success', failed:'error', running:'info', cancelled:'default' }
-  return h(NTag, { type: m[s] || 'default', size: 'small', bordered: false }, { default: () => s })
-}
+const statusTag = useStatusTag()
 
 const columns: DataTableColumns<BackupFile> = [
   { title: '时间', key: 'started_at', render: r => new Date(r.started_at).toLocaleString() },

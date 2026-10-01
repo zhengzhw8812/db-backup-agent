@@ -48,7 +48,16 @@ def create_app() -> FastAPI:
         finally:
             db.close()
 
-    app = FastAPI(title="DB Backup Agent", version="3.0.0", lifespan=lifespan)
+    app = FastAPI(
+        title="DB Backup Agent",
+        version="3.0.0",
+        lifespan=lifespan,
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
+    )
+    from starlette.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax", https_only=settings.cookie_secure)
     app.state.crypto = Crypto(fernet_key.encode("ascii"))
     app.state.arq = None

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     # 会话 cookie 是否加 Secure 标记。生产应在 TLS 终结代理后置为 true。
     cookie_secure: bool = False
+    # 是否暴露 /docs 与 openapi.json(默认关,自托管默认无需对外暴露 API 文档)
+    docs_enabled: bool = False
 
     @property
     def sqlite_url(self) -> str:
