@@ -66,8 +66,8 @@ def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: st
     deleted, failed = 0, 0
     for t in targets:
         dest = db.get(CloudDestination, t.cloud_destination_id)
-        if dest is None:
-            continue
+        if dest is None or not dest.enabled:
+            continue  # 目的地缺失/禁用 → 不发起破坏性删除(与 sync 启用语义一致)
         try:
             cfg = _cloud_config(dest, crypto)
             get_storage(dest.provider).delete(cfg, key)

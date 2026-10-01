@@ -193,3 +193,17 @@ def test_retention_cloud_failure_retains_record(tmp_path, monkeypatch):
     assert (bdir / "pg.sql.gz").exists()  # 本地文件保留
     logs = _session._SessionLocal().query(SystemLog).filter(SystemLog.source == "cloud").all()
     assert len(logs) == 1  # 失败仍有迹可循
+
+
+def test_delete_cloud_copies_skips_disabled_destination(tmp_path, monkeypatch):
+    """目的地本身被禁用 → 不对其发起删除(与 sync 的启用语义一致)。"""
+    from app.services.sync_service import delete_cloud_copies
+
+    storage = RecordingDeleteStorage()
+    db, crypto, bdir, backup = _setup(tmp_path, monkeypatch, storage)
+    conn = db.get(DbConnection, backup.connection_id)
+    _add_dest(db, crypto, conn.id, bucket="bk-off", enabled=False)  # 目的地禁用
+    deleted, failed = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
+    db.close()
+    assert (deleted, failed) == (0, 0)
+    assert storage.deletes == []
