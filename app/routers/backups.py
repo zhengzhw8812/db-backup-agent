@@ -56,9 +56,13 @@ def delete_backup(record_id: int, request: Request, db: Session = Depends(get_db
     # 先删记录再删文件:若 commit 失败,文件仍在,记录也仍在(一致);反之会留指向缺失文件的记录
     file_path = None
     if rec.file_path:
-        # 云联动按 file_path 属性判定(本地文件缺失不代表云端没有),且在本地删除之前
+        # 云联动按 file_path 属性判定(本地文件缺失不代表云端没有),且在本地删除之前;
+        # 任一启用目标失败 → 502 并保留记录(可稍后重试),避免云副本永久孤儿化
         from app.services.sync_service import delete_cloud_copies
-        delete_cloud_copies(db, request.app.state.crypto, rec.connection_id, rec.file_path)
+
+        _, cloud_failed = delete_cloud_copies(db, request.app.state.crypto, rec.connection_id, rec.file_path)
+        if cloud_failed:
+            raise HTTPException(status_code=502, detail="云端副本删除失败,已保留本地备份,请稍后重试")
         try:
             file_path = _resolve(rec)
         except HTTPException:

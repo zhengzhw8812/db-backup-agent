@@ -165,3 +165,35 @@ def test_auto_verify_respects_30day_window(client, monkeypatch):
     asyncio.run(sched_mod.auto_verify_weekly(client.app))
     assert fake.enqueued == []
     db.close()
+
+
+def test_auto_verify_writes_summary_log(client, monkeypatch):
+    """每周批完成后写 SystemLog 汇总(入队条数)。"""
+    from app.db import session as _session
+    from app.db.models import DbConnection, BackupRecord, SystemLog
+    from app.services import scheduler as sched_mod
+    from app.services.settings_service import set_setting
+
+    class FakeArq:
+        async def enqueue_job(self, *args): pass
+
+    async def fake_get_arq(app):
+        return FakeArq()
+
+    monkeypatch.setattr("app.routers.jobs._get_arq", fake_get_arq)
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                        file_path="p.sql.gz", checksum="0" * 64, started_at=utcnow()))
+    db.commit()
+    set_setting(db, "verify_auto_enabled", True)
+    db.close()
+
+    import asyncio
+    asyncio.run(sched_mod.auto_verify_weekly(client.app))
+
+    db = _session._SessionLocal()
+    row = db.query(SystemLog).filter(SystemLog.source == "verify").first()
+    db.close()
+    assert row is not None and "1" in row.message

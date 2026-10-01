@@ -30,9 +30,12 @@ def run_retention(db: Session, crypto, conn: DbConnection, backup_dir: Path) -> 
     count = 0
     for rec in old:
         if rec.file_path:
-            # 云联动先行:云端失败已在内部记日志并继续;随后删本地(文件+记录)
+            # 云联动先行:任一启用目标删除失败 → 本条整体保留(文件+记录),下轮重试
             from app.services.sync_service import delete_cloud_copies
-            delete_cloud_copies(db, crypto, conn.id, rec.file_path)
+
+            _, failed = delete_cloud_copies(db, crypto, conn.id, rec.file_path)
+            if failed:
+                continue
             safe_remove(backup_dir / rec.file_path)
         db.delete(rec)
         count += 1

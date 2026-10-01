@@ -157,6 +157,13 @@ async def auto_verify_weekly(app) -> None:
         arq = await _get_arq(app)
         for rid in ids:
             await arq.enqueue_job("verify_job", rid)
+        db3 = _session._SessionLocal()
+        try:
+            db3.add(SystemLog(level="info", source="verify",
+                              message=f"自动验证:已入队 {len(ids)} 条记录(每周任务)"))
+            db3.commit()
+        finally:
+            db3.close()
     except Exception:
         db2 = _session._SessionLocal()
         try:

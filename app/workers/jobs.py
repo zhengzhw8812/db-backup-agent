@@ -107,6 +107,22 @@ def _run_verify_sync(ctx, record_id: int) -> dict:
         reporter.report("verify")
         rec = run_verify(db, rec, ctx["backup_dir"])
         reporter.report(rec.verify_status, rec.verify_error or "")
+        if rec.verify_status == "failed":
+            # 失败即告知(走既有失败通知开关),成功不通知避免噪音
+            from app.bootstrap import bootstrap_keys
+            from app.services.notifications import notify_generic
+
+            _, fernet_key = bootstrap_keys()
+            crypto = Crypto(fernet_key.encode("ascii"))
+            conn = db.get(DbConnection, rec.connection_id)
+            name = conn.name if conn else f"#{rec.connection_id}"
+            try:
+                notify_generic(db, crypto, kind="failure",
+                               subject=f"[验证失败] {name}",
+                               content=(f"数据库:{name}\n记录:#{rec.id}\n"
+                                        f"库:{rec.db_name or '全部'}\n原因:{rec.verify_error}"))
+            except Exception:
+                pass  # 通知失败不影响验证结果
         return {"record_id": record_id, "status": rec.verify_status}
     finally:
         db.close()

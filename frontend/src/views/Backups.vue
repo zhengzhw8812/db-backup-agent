@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, h, onMounted, onUnmounted } from 'vue'
+import { ref, h, watch, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NSelect, NSpace, NDrawer, NDrawerContent,
   NTag, NPopconfirm, NStep, NSteps, NText, useMessage,
@@ -94,11 +94,17 @@ async function verify(id: number) {
   try {
     await bkApi.verifyBackup(id)
     msg.success('验证任务已排队')
-    subscribe(id)
+    showProgress.value = true
+    // 验证任务终态是 passed/failed(非备份语义),需覆盖终态集;结束后刷新列表
+    subscribe(id, undefined, { terminal: ['passed', 'failed'] })
   } catch {
     msg.error('验证任务排队失败')
   }
 }
+
+watch(status, (s: string) => {
+  if (s === 'passed' || s === 'failed') load()
+})
 
 const jobColumns: DataTableColumns<Job> = [
   { title: '记录', key: 'id' },

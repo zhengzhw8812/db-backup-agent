@@ -53,16 +53,17 @@ def run_sync(db: Session, crypto: Crypto, backup_record: BackupRecord, backup_di
     return {"synced": synced, "errors": errors}
 
 
-def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: str) -> int:
+def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: str) -> tuple[int, int]:
     """删除该连接所有启用云目标上的对象 key(对象名与上传时一致,即备份记录的 file_path)。
 
-    单目标失败:记 SystemLog(warning)后继续,不阻塞不回滚。返回成功删除数。"""
+    单目标失败:记 SystemLog(warning)后继续其余目标。返回 (成功数, 失败数);
+    失败数 > 0 时调用方必须保留本地记录与文件,等待下轮重试。"""
     targets = (
         db.query(SyncTarget)
         .filter(SyncTarget.connection_id == connection_id, SyncTarget.enabled.is_(True))
         .all()
     )
-    deleted = 0
+    deleted, failed = 0, 0
     for t in targets:
         dest = db.get(CloudDestination, t.cloud_destination_id)
         if dest is None:
@@ -72,8 +73,9 @@ def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: st
             get_storage(dest.provider).delete(cfg, key)
             deleted += 1
         except Exception as exc:
+            failed += 1
             db.add(SystemLog(level="warning", source="cloud",
                              message=f"云副本删除失败:{dest.name}:{key}",
                              context=str(exc)))
             db.commit()
-    return deleted
+    return deleted, failed

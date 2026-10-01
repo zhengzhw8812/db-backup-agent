@@ -83,3 +83,46 @@ def test_verify_rejects_path_escape(tmp_path):
     with pytest.raises(ValueError):
         run_verify(db, rec, bdir)
     db.close()
+
+
+def test_verify_failure_notifies(tmp_path, monkeypatch):
+    """验证失败 → 经 notify_generic(kind="failure") 发通知,内容含记录号与原因。"""
+    from app.db.models import DbConnection
+    from app.workers.jobs import _run_verify_sync
+
+    alerts = []
+    monkeypatch.setattr("app.services.notifications.notify_generic",
+                        lambda db, crypto, *, kind, subject, content:
+                        alerts.append((kind, subject, content)) or {"email": False})
+    monkeypatch.setattr("app.workers.jobs.bootstrap_keys", lambda: ("sk", Fernet.generate_key().decode()))
+
+    db, bdir, rec = _setup(tmp_path)
+    name = db.get(DbConnection, rec.connection_id).name
+    data = (bdir / "p.sql.gz").read_bytes()
+    (bdir / "p.sql.gz").write_bytes(data[: len(data) // 2])  # 截断损坏
+    rid = rec.id
+    db.close()
+
+    out = _run_verify_sync({"backup_dir": bdir}, rid)
+    assert out["status"] == "failed"
+    assert len(alerts) == 1
+    kind, subject, content = alerts[0]
+    assert kind == "failure"
+    assert name in subject and str(rid) in content
+    assert "gzip" in content
+
+
+def test_verify_success_does_not_notify(tmp_path, monkeypatch):
+    from app.workers.jobs import _run_verify_sync
+
+    alerts = []
+    monkeypatch.setattr("app.services.notifications.notify_generic",
+                        lambda db, crypto, *, kind, subject, content:
+                        alerts.append((kind, subject)) or {"email": False})
+    monkeypatch.setattr("app.workers.jobs.bootstrap_keys", lambda: ("sk", Fernet.generate_key().decode()))
+
+    db, bdir, rec = _setup(tmp_path)
+    rid = rec.id
+    db.close()
+    _run_verify_sync({"backup_dir": bdir}, rid)
+    assert alerts == []

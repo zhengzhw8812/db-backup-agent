@@ -136,9 +136,9 @@ def test_delete_cloud_copies_removes_from_enabled_targets(tmp_path, monkeypatch)
     conn = db.get(DbConnection, backup.connection_id)
     _add_dest(db, crypto, conn.id, bucket="bk2", prefix="")
     _add_dest(db, crypto, conn.id, bucket="bk3", prefix="p3", target_enabled=False)
-    n = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
+    deleted, failed = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
     db.close()
-    assert n == 2
+    assert (deleted, failed) == (2, 0)
     assert sorted(storage.deletes) == [("bk", "pre/pg.sql.gz"), ("bk2", "pg.sql.gz")]
 
 
@@ -149,10 +149,10 @@ def test_delete_cloud_copies_continues_on_failure(tmp_path, monkeypatch):
     db, crypto, bdir, backup = _setup(tmp_path, monkeypatch, storage)
     conn = db.get(DbConnection, backup.connection_id)
     _add_dest(db, crypto, conn.id)
-    n = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
+    deleted, failed = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
     logs = db.query(SystemLog).filter(SystemLog.level == "warning", SystemLog.source == "cloud").all()
     db.close()
-    assert n == 1  # 第一个目标失败,第二个仍被删
+    assert (deleted, failed) == (1, 1)  # 第一个目标失败,第二个仍被删
     assert len(logs) == 1
     assert "delete boom" in (logs[0].context or "") + logs[0].message
 
@@ -170,3 +170,26 @@ def test_retention_deletes_cloud_copies(tmp_path, monkeypatch):
     db.close()
     assert count == 1
     assert storage.deletes == [("bk", "pre/pg.sql.gz")]
+
+
+def test_retention_cloud_failure_retains_record(tmp_path, monkeypatch):
+    """云删除失败 → 该记录整体保留(文件+记录),下轮保留清理可重试。"""
+    from app.db.models import Schedule, SystemLog
+    from app.services.retention import run_retention
+
+    storage = RecordingDeleteStorage(fail_on=1)
+    db, crypto, bdir, backup = _setup(tmp_path, monkeypatch, storage)
+    conn = db.get(DbConnection, backup.connection_id)
+    _add_dest(db, crypto, conn.id)  # 第二个启用目标(第一个在 _setup 里,fail_on=1 打在它上)
+    db.add(Schedule(connection_id=conn.id, cron_expr="0 2 * * *", retention_days=1, enabled=True))
+    backup.started_at = utcnow() - __import__("datetime").timedelta(days=2)
+    db.commit()
+
+    count = run_retention(db, crypto, conn, bdir)
+    db.close()
+    assert count == 0  # 云删除失败 → 本条不清理
+    # 目标间仍尽力而为:第一个失败、第二个成功删除;但记录整体保留待下轮重试
+    assert storage.deletes == [("bk2", "pg.sql.gz")]
+    assert (bdir / "pg.sql.gz").exists()  # 本地文件保留
+    logs = _session._SessionLocal().query(SystemLog).filter(SystemLog.source == "cloud").all()
+    assert len(logs) == 1  # 失败仍有迹可循

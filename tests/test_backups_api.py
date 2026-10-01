@@ -150,3 +150,37 @@ def _async_return(value):
     async def _call(app):
         return value
     return _call
+
+
+class FailDeleteStorage:
+    def delete(self, cfg, key):
+        raise RuntimeError("cloud down")
+    def upload(self, cfg, local_path, key): return "s3://x/y"
+    def test(self, cfg): pass
+
+
+def test_manual_delete_cloud_failure_keeps_record(authed, monkeypatch):
+    """手动删除遇云删除失败 → 502,记录与文件保留(可稍后重试)。"""
+    from app.db.models import CloudDestination, DbConnection, SyncTarget
+
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: FailDeleteStorage())
+    crypto = authed.app.state.crypto
+    db = _session._SessionLocal()
+    try:
+        conn = db.query(DbConnection).first()
+        dest = CloudDestination(name="m", provider="s3", endpoint="h:9000", bucket="bk",
+                                access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
+                                prefix="", secure=False, enabled=True)
+        db.add(dest); db.commit(); db.refresh(dest)
+        db.add(SyncTarget(connection_id=conn.id, cloud_destination_id=dest.id, enabled=True))
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                           file_path="b.sql.gz", started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    resp = authed.delete(f"/api/v1/backups/{rid}")
+    assert resp.status_code == 502
+    db = _session._SessionLocal()
+    assert db.get(BackupRecord, rid) is not None  # 记录保留
+    db.close()
