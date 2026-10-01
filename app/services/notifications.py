@@ -3,15 +3,16 @@ import json
 import base64
 import hashlib
 import hmac as hmac_mod
+import json as _json
 import smtplib
+import urllib.parse
+import urllib.request
 import time
 import urllib.parse
 import urllib.request
 from email.mime.text import MIMEText
 
 from sqlalchemy.orm import Session
-
-import requests
 
 from app.db.models import DbConnection, BackupRecord, NotificationConfig
 from app.core.crypto import Crypto
@@ -72,6 +73,19 @@ def _send_wechat(cfg: NotificationConfig, content: str, secret: str) -> None:
         raise RuntimeError(f"企业微信发送失败: {data}")
 
 
+def _http_post(url: str, *, json_body: dict | None = None, form: dict | None = None) -> None:
+    """标准库 HTTP POST(json 或表单),非 2xx 抛异常。避免为两个通知渠道引入 requests 依赖。"""
+    if form is not None:
+        data = urllib.parse.urlencode(form).encode()
+        req = urllib.request.Request(url, data=data)
+    else:
+        req = urllib.request.Request(url, data=_json.dumps(json_body).encode(),
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        if resp.status >= 400:
+            raise RuntimeError(f"HTTP {resp.status}")
+
+
 def _send_feishu(cfg: NotificationConfig, content: str, crypto: Crypto) -> None:
     """飞书自定义机器人:文本消息;配置了加签密钥时附 timestamp+sign。失败抛异常。"""
     webhook = crypto.decrypt(cfg.feishu_webhook_enc)
@@ -84,16 +98,13 @@ def _send_feishu(cfg: NotificationConfig, content: str, crypto: Crypto) -> None:
         ).decode()
         payload["timestamp"] = timestamp
         payload["sign"] = sign
-    resp = requests.post(webhook, json=payload, timeout=15)
-    resp.raise_for_status()
+    _http_post(webhook, json_body=payload)
 
 
 def _send_serverchan(cfg: NotificationConfig, title: str, content: str, crypto: Crypto) -> None:
     """Server酱 Turbo:推送到个人微信。失败抛异常。"""
     key = crypto.decrypt(cfg.serverchan_sendkey_enc)
-    resp = requests.post(f"https://sctapi.ftqq.com/{key}.send",
-                         data={"title": title, "desp": content}, timeout=15)
-    resp.raise_for_status()
+    _http_post(f"https://sctapi.ftqq.com/{key}.send", form={"title": title, "desp": content})
 
 
 def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record: BackupRecord) -> dict:

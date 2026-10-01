@@ -127,13 +127,12 @@ def crypto():
 
 
 class FakePost:
-    """捕获 requests.post 调用。"""
+    """捕获 _http_post 调用。"""
     def __init__(self):
         self.calls = []
 
-    def __call__(self, url, json=None, data=None, timeout=None):
-        self.calls.append({"url": url, "json": json, "data": data})
-        return SimpleNamespace(ok=True, raise_for_status=lambda: None)
+    def __call__(self, url, *, json_body=None, form=None):
+        self.calls.append({"url": url, "json": json_body, "data": form})
 
 
 def _cfg_with(crypto, **kw):
@@ -148,7 +147,7 @@ def test_send_feishu_posts_text_and_signature(crypto, monkeypatch):
 
     from app.services.notifications import _send_feishu
     post = FakePost()
-    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    monkeypatch.setattr("app.services.notifications._http_post", post)
     secret = "mysec"
     cfg = _cfg_with(crypto, feishu_enabled=True,
                     feishu_webhook_enc=crypto.encrypt("https://open.feishu.cn/hook/x"),
@@ -167,7 +166,7 @@ def test_send_feishu_posts_text_and_signature(crypto, monkeypatch):
 def test_send_serverchan_posts_title_desp(crypto, monkeypatch):
     from app.services.notifications import _send_serverchan
     post = FakePost()
-    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    monkeypatch.setattr("app.services.notifications._http_post", post)
     cfg = _cfg_with(crypto, serverchan_enabled=True,
                     serverchan_sendkey_enc=crypto.encrypt("SCT123"))
     _send_serverchan(cfg, "标题", "内容", crypto)

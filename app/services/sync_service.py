@@ -9,6 +9,12 @@ from app.cloud.base import CloudConfig, get_storage
 
 
 def _cloud_config(dest: CloudDestination, crypto: Crypto) -> CloudConfig:
+    # nfs/smb:适配器操作挂载点;同步与删除联动共用本构造,必须带上 mount_point
+    mount_point = None
+    if dest.provider in ("nfs", "smb"):
+        from app.services import mount_service
+
+        mount_point = str(mount_service.mount_point(dest.id))
     return CloudConfig(
         endpoint=dest.endpoint,
         access_key=crypto.decrypt(dest.access_key_enc),
@@ -17,6 +23,7 @@ def _cloud_config(dest: CloudDestination, crypto: Crypto) -> CloudConfig:
         region=dest.region,
         secure=dest.secure,
         prefix=dest.prefix,
+        mount_point=mount_point,
     )
 
 
