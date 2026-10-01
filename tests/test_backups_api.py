@@ -208,3 +208,28 @@ def test_backup_download_not_double_compressed(authed, monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert resp.headers.get("content-encoding") != "gzip"
     assert resp.headers["content-type"] == "application/gzip"
+
+
+def test_verify_endpoint_marks_running_and_rejects_duplicate(authed, monkeypatch):
+    """发起验证 → 记录进入 running;再次发起 → 409(防重复全文件扫描)。"""
+    from app.db.models import DbConnection
+
+    class FakeArq:
+        async def enqueue_job(self, *args): pass
+
+    monkeypatch.setattr("app.routers.jobs._get_arq", _async_return(FakeArq()))
+    db = _session._SessionLocal()
+    try:
+        conn = db.query(DbConnection).first()
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                           file_path="a.sql.gz", checksum="0" * 64, started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    assert authed.post(f"/api/v1/backups/{rid}/verify").status_code == 202
+    # 任务未执行(假队列)→ 记录应处于 running
+    db = _session._SessionLocal()
+    assert db.get(BackupRecord, rid).verify_status == "running"
+    db.close()
+    assert authed.post(f"/api/v1/backups/{rid}/verify").status_code == 409

@@ -14,6 +14,7 @@ export interface BackupFile {
   finished_at: string | null
   verify_status: string | null
   verified_at: string | null
+  verify_error: string | null
 }
 
 export const listBackups = () => client.get<BackupFile[]>('/backups')

@@ -81,6 +81,12 @@ async def verify_backup(record_id: int, request: Request, db: Session = Depends(
     rec = db.get(BackupRecord, record_id)
     if rec is None or rec.status != "success" or not rec.file_path:
         raise HTTPException(status_code=409, detail="仅可验证已成功且有文件的备份")
+    if rec.verify_status == "running":
+        raise HTTPException(status_code=409, detail="该备份已有验证在进行")
+    # 进入 running 占位:防重复全文件扫描;verify_job 终态会覆盖为 passed/failed
+    rec.verify_status = "running"
+    rec.verify_error = None
+    db.commit()
     from app.routers.jobs import _get_arq
 
     try:

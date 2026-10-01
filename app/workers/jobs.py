@@ -6,6 +6,7 @@ from app.bootstrap import bootstrap_keys
 from app.core.crypto import Crypto
 from app.db.models import DbConnection, BackupRecord, RestoreRecord, SystemLog
 from app.db import session as _session
+from app.core.clock import utcnow
 from app.services.backup_service import run_backup
 from app.services.restore_service import run_restore
 from app.services.sync_service import run_sync
@@ -105,7 +106,15 @@ def _run_verify_sync(ctx, record_id: int) -> dict:
             return {"record_id": record_id, "status": "skipped"}
         reporter = ProgressReporter(record_id)
         reporter.report("verify")
-        rec = run_verify(db, rec, ctx["backup_dir"])
+        try:
+            rec = run_verify(db, rec, ctx["backup_dir"])
+        except Exception as exc:
+            # 兜底:意外异常转 failed,避免 running 占位永久卡死
+            rec.verify_status = "failed"
+            rec.verify_error = f"验证过程异常:{exc}"
+            rec.verified_at = utcnow()
+            db.commit()
+            db.refresh(rec)
         reporter.report(rec.verify_status, rec.verify_error or "")
         if rec.verify_status == "failed":
             # 失败即告知(走既有失败通知开关),成功不通知避免噪音
