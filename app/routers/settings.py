@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import NotificationConfig
 from app.deps import get_current_account
-from app.schemas.notification import NotificationSettings, NotificationSettingsOut
+from app.schemas.notification import NotificationSettings, NotificationSettingsOut, VerifySettings
+from app.services.settings_service import get_setting, set_setting
 
 router = APIRouter()
 
@@ -68,3 +69,14 @@ def put_notifications(payload: NotificationSettings, request: Request,
         cfg.wechat_secret_enc = crypto.encrypt(payload.wechat_secret)
     db.commit(); db.refresh(cfg)
     return _to_out(cfg)
+
+
+@router.get("/settings/verify", response_model=VerifySettings)
+def get_verify_settings(db: Session = Depends(get_db), _=Depends(get_current_account)):
+    return VerifySettings(auto_enabled=bool(get_setting(db, "verify_auto_enabled", False)))
+
+
+@router.put("/settings/verify", response_model=VerifySettings)
+def put_verify_settings(payload: VerifySettings, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    set_setting(db, "verify_auto_enabled", payload.auto_enabled)
+    return VerifySettings(auto_enabled=payload.auto_enabled)

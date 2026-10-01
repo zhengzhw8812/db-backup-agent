@@ -47,3 +47,13 @@ def test_put_updates_and_hides_secrets(authed):
     got = authed.get("/api/v1/settings/notifications").json()
     assert got["smtp_host"] == "h"
     assert "smtp_password" not in got
+
+
+def test_verify_settings_get_put(authed):
+    r = authed.get("/api/v1/settings/verify")
+    assert r.status_code == 200
+    assert r.json() == {"auto_enabled": False}
+    r = authed.put("/api/v1/settings/verify", json={"auto_enabled": True})
+    assert r.status_code == 200
+    assert r.json() == {"auto_enabled": True}
+    assert authed.get("/api/v1/settings/verify").json() == {"auto_enabled": True}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
+import { NCard, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
 import * as setApi from '../api/settings'
 import type { NotificationSettings } from '../api/settings'
 
@@ -34,7 +34,27 @@ async function save() {
   } catch (e: any) { msg.error(e.response?.data?.detail || '保存失败') }
   finally { loading.value = false }
 }
-onMounted(load)
+const verifyAuto = ref(false)
+
+async function loadVerify() {
+  try {
+    const { data } = await setApi.getVerifySettings()
+    verifyAuto.value = data.auto_enabled
+  } catch (e: any) {
+    msg.error('加载验证设置失败')
+  }
+}
+
+async function saveVerify() {
+  try {
+    await setApi.putVerifySettings({ auto_enabled: verifyAuto.value })
+    msg.success('验证设置已保存')
+  } catch (e: any) {
+    msg.error(e.response?.data?.detail || '保存失败')
+  }
+}
+
+onMounted(() => { load(); loadVerify() })
 </script>
 
 <template>
@@ -77,6 +97,18 @@ onMounted(load)
           </n-space>
           <n-form-item label="Secret(留空不改)"><n-input v-model:value="f.wechat_secret" type="password" show-password-on="click" placeholder="留空保持不变" /></n-form-item>
         </template>
+      </n-form>
+    </n-card>
+
+    <n-card title="备份验证" :bordered="false">
+      <n-form label-placement="top">
+        <n-form-item label="每周自动验证">
+          <n-space align="center">
+            <n-switch v-model:value="verifyAuto" />
+            <n-button :loading="false" @click="saveVerify">保存</n-button>
+          </n-space>
+        </n-form-item>
+        <n-text depth="3">开启后每周一 03:30 自动校验备份文件完整性(gzip CRC + 校验和),损坏的备份会触发失败通知。</n-text>
       </n-form>
     </n-card>
 

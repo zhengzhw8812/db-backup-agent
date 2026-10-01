@@ -20,3 +20,10 @@ export interface NotificationSettings {
 
 export const getNotifications = () => client.get<NotificationSettings>('/settings/notifications')
 export const putNotifications = (data: NotificationSettings) => client.put<NotificationSettings>('/settings/notifications', data)
+
+export interface VerifySettings {
+  auto_enabled: boolean
+}
+
+export const getVerifySettings = () => client.get<VerifySettings>('/settings/verify')
+export const putVerifySettings = (data: VerifySettings) => client.put<VerifySettings>('/settings/verify', data)

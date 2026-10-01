@@ -140,3 +140,10 @@ class NotificationConfig(Base):
     notify_on_success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_on_failure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class AppSetting(Base):
+    """通用 KV 设置(值为 JSON 字符串)。"""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)

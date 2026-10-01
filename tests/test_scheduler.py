@@ -85,3 +85,83 @@ def test_run_scheduled_backup_skips_when_already_running(monkeypatch, tmp_path):
     scheduled = db.query(BackupRecord).filter(BackupRecord.trigger == "scheduled").all()
     assert scheduled == []  # 未新建 scheduled 记录
     db.close()
+
+
+def test_auto_verify_enqueues_eligible(client, monkeypatch, tmp_path):
+    """未验证的 success 记录入队;30 天内已验证的不入队;开关关 → 不入队。"""
+    from datetime import timedelta
+
+    from app.db import session as _session
+    from app.db.models import DbConnection, BackupRecord
+    from app.services import scheduler as sched_mod
+    from app.services.settings_service import set_setting
+
+    class FakeArq:
+        def __init__(self):
+            self.enqueued = []
+        async def enqueue_job(self, *args):
+            self.enqueued.append(args)
+
+    fake = FakeArq()
+
+    async def fake_get_arq(app):
+        return fake
+
+    monkeypatch.setattr("app.routers.jobs._get_arq", fake_get_arq)
+
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+    old = utcnow() - timedelta(days=40)
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                        file_path="p.sql.gz", checksum="0" * 64, started_at=utcnow()))
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                        started_at=old, verify_status="passed", verified_at=utcnow()))
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="failed", started_at=utcnow()))
+    db.commit()
+
+    set_setting(db, "verify_auto_enabled", True)
+    import asyncio
+    asyncio.run(sched_mod.auto_verify_weekly(client.app))
+    assert [a[1] for a in fake.enqueued] and all(a[0] == "verify_job" for a in fake.enqueued)
+    n_enabled = len(fake.enqueued)
+
+    set_setting(db, "verify_auto_enabled", False)
+    asyncio.run(sched_mod.auto_verify_weekly(client.app))
+    assert len(fake.enqueued) == n_enabled  # 关闭后不再入队
+    db.close()
+
+
+def test_auto_verify_respects_30day_window(client, monkeypatch):
+    from datetime import timedelta
+
+    from app.db import session as _session
+    from app.db.models import DbConnection, BackupRecord
+    from app.services import scheduler as sched_mod
+    from app.services.settings_service import set_setting
+
+    class FakeArq:
+        def __init__(self):
+            self.enqueued = []
+        async def enqueue_job(self, *args):
+            self.enqueued.append(args)
+
+    fake = FakeArq()
+
+    async def fake_get_arq(app):
+        return fake
+
+    monkeypatch.setattr("app.routers.jobs._get_arq", fake_get_arq)
+
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                        started_at=utcnow(), verify_status="passed",
+                        verified_at=utcnow() - timedelta(days=10)))  # 10 天前验证过 → 跳过
+    db.commit()
+    set_setting(db, "verify_auto_enabled", True)
+    import asyncio
+    asyncio.run(sched_mod.auto_verify_weekly(client.app))
+    assert fake.enqueued == []
+    db.close()

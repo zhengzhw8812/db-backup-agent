@@ -39,3 +39,7 @@ class NotificationSettingsOut(BaseModel):
     # 不含 smtp_password / wechat_secret
 
     model_config = {"from_attributes": True}
+
+
+class VerifySettings(BaseModel):
+    auto_enabled: bool = False

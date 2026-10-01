@@ -77,6 +77,14 @@ class SchedulerService:
                     pass
         finally:
             db.close()
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+
+            self._sched.add_job(auto_verify_weekly,
+                                CronTrigger(day_of_week="mon", hour=3, minute=30),
+                                args=[self.app], id="auto_verify_weekly", replace_existing=True)
+        except Exception:
+            pass  # 注册失败不拖垮其余调度(逐条兜底,同既有模式)
         self._sched.start()
 
     @property
@@ -111,3 +119,47 @@ class SchedulerService:
             return job.next_run_time if job else None
         except Exception:
             return None
+
+async def auto_verify_weekly(app) -> None:
+    """每周自动验证(周一 03:30,由 SchedulerService 注册):
+    开关开启时,把全部待验证(success 且从未验证或 verified_at 超过 30 天)记录入队 verify_job。"""
+    from datetime import timedelta
+
+    from app.services.settings_service import get_setting
+
+    db = _session._SessionLocal()
+    try:
+        if not get_setting(db, "verify_auto_enabled", False):
+            return
+        cutoff = utcnow() - timedelta(days=30)
+        eligible = (
+            db.query(BackupRecord)
+            .filter(
+                BackupRecord.status == "success",
+                BackupRecord.file_path.isnot(None),
+                BackupRecord.verify_status.is_(None)
+                | BackupRecord.verified_at.is_(None)
+                | (BackupRecord.verified_at < cutoff),
+            )
+            .all()
+        )
+        ids = [r.id for r in eligible]
+    finally:
+        db.close()
+    if not ids:
+        return
+    from app.routers.jobs import _get_arq
+
+    try:
+        arq = await _get_arq(app)
+        for rid in ids:
+            await arq.enqueue_job("verify_job", rid)
+    except Exception:
+        db2 = _session._SessionLocal()
+        try:
+            db2.add(SystemLog(level="warning", source="verify",
+                              message=f"自动验证入队失败,共 {len(ids)} 条"))
+            db2.commit()
+        finally:
+            db2.close()
+        raise
