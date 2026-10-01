@@ -9,6 +9,7 @@ from app.db import session as _session
 from app.services.backup_service import run_backup
 from app.services.restore_service import run_restore
 from app.services.sync_service import run_sync
+from app.services.verify_service import run_verify
 from app.services.retention import run_retention
 from app.services.notifications import notify_backup_result
 from app.workers.progress import ProgressReporter
@@ -94,3 +95,22 @@ def _run_sync_sync(ctx, backup_record_id: int) -> dict:
 
 async def sync_job(ctx, backup_record_id: int) -> dict:
     return await asyncio.to_thread(_run_sync_sync, ctx, backup_record_id)
+
+
+def _run_verify_sync(ctx, record_id: int) -> dict:
+    db = _session._SessionLocal()
+    try:
+        rec = db.get(BackupRecord, record_id)
+        if rec is None or rec.status == "running":
+            return {"record_id": record_id, "status": "skipped"}
+        reporter = ProgressReporter(record_id)
+        reporter.report("verify")
+        rec = run_verify(db, rec, ctx["backup_dir"])
+        reporter.report(rec.verify_status, rec.verify_error or "")
+        return {"record_id": record_id, "status": rec.verify_status}
+    finally:
+        db.close()
+
+
+async def verify_job(ctx, record_id: int) -> dict:
+    return await asyncio.to_thread(_run_verify_sync, ctx, record_id)

@@ -48,3 +48,8 @@ class BackupFileOut(BaseModel):
     finished_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class VerifyRunResponse(BaseModel):
+    record_id: int
+    status: str

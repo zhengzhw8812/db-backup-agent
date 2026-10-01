@@ -101,3 +101,52 @@ def test_manual_delete_deletes_cloud_copies(authed, monkeypatch):
     resp = authed.delete(f"/api/v1/backups/{rid}")
     assert resp.status_code == 204
     assert storage.deletes == [("bk", "a.sql.gz")]
+
+
+def test_verify_endpoint_enqueues(authed, monkeypatch):
+    from app.db.models import CloudDestination  # noqa: F401 (保持与上方测试导入一致)
+
+    class FakeArq:
+        def __init__(self):
+            self.enqueued = []
+        async def enqueue_job(self, *args):
+            self.enqueued.append(args)
+
+    fake = FakeArq()
+    monkeypatch.setattr("app.routers.jobs._get_arq", _async_return(fake))
+    db = _session._SessionLocal()
+    try:
+        from app.db.models import DbConnection
+        conn = db.query(DbConnection).first()
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                           file_path="a.sql.gz", checksum="0" * 64, started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    resp = authed.post(f"/api/v1/backups/{rid}/verify")
+    assert resp.status_code == 202
+    assert resp.json() == {"record_id": rid, "status": "queued"}
+    assert fake.enqueued == [("verify_job", rid)]
+
+
+def test_verify_endpoint_rejects_running(authed):
+    db = _session._SessionLocal()
+    try:
+        from app.db.models import DbConnection
+        conn = db.query(DbConnection).first()
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="running",
+                           started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    assert authed.post(f"/api/v1/backups/{rid}/verify").status_code == 409
+
+
+def _async_return(value):
+    import asyncio
+
+    async def _call(app):
+        return value
+    return _call

@@ -47,6 +47,9 @@ def migrate_schema(db: Session) -> None:
     """启动时补齐 db_connections.db_names / backup_records.db_name 两列并回填。"""
     _ensure_column(db, "db_connections", "db_names", "TEXT")
     _ensure_column(db, "backup_records", "db_name", "TEXT")
+    _ensure_column(db, "backup_records", "verify_status", "TEXT")
+    _ensure_column(db, "backup_records", "verified_at", "DATETIME")
+    _ensure_column(db, "backup_records", "verify_error", "TEXT")
     _backfill_db_names(db)
     _backfill_record_db_names(db)
 

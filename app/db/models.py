@@ -66,6 +66,9 @@ class BackupRecord(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verify_status: Mapped[str | None] = mapped_column(String(16), nullable=True)  # passed/failed
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verify_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SystemLog(Base):

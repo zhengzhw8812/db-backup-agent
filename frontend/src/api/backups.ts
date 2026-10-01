@@ -12,8 +12,11 @@ export interface BackupFile {
   duration_ms: number | null
   started_at: string
   finished_at: string | null
+  verify_status: string | null
+  verified_at: string | null
 }
 
 export const listBackups = () => client.get<BackupFile[]>('/backups')
 export const deleteBackup = (id: number) => client.delete(`/backups/${id}`)
 export const downloadUrl = (id: number) => `/api/v1/backups/${id}/download`
+export const verifyBackup = (id: number) => client.post(`/backups/${id}/verify`)

@@ -88,6 +88,22 @@ const statusTag = (s: string) => {
   return h(NTag, { type: m[s] || 'default', size: 'small', bordered: false }, { default: () => s })
 }
 
+const verifyTag = (s: string | null) => {
+  if (!s) return h(NTag, { type: 'default', size: 'small', bordered: false }, { default: () => '未验证' })
+  const m: Record<string, 'success' | 'error'> = { passed: 'success', failed: 'error' }
+  return h(NTag, { type: m[s] || 'default', size: 'small', bordered: false }, { default: () => s })
+}
+
+async function verify(id: number) {
+  try {
+    await bkApi.verifyBackup(id)
+    msg.success('验证任务已排队')
+    subscribe(id)
+  } catch {
+    msg.error('验证任务排队失败')
+  }
+}
+
 const jobColumns: DataTableColumns<Job> = [
   { title: '记录', key: 'id' },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
@@ -104,6 +120,7 @@ const fileColumns: DataTableColumns<BackupFile> = [
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: '库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '状态', key: 'status', render: r => statusTag(r.status) },
+  { title: '验证', key: 'verify_status', render: r => verifyTag(r.verify_status) },
   { title: '大小', key: 'size', render: r => fmtBytes(r.size) },
   { title: '耗时', key: 'duration_ms', render: r => fmtMs(r.duration_ms) },
   {
@@ -111,6 +128,9 @@ const fileColumns: DataTableColumns<BackupFile> = [
       default: () => [
         r.status === 'success'
           ? h(NButton, { size: 'small', onClick: () => download(r.id) }, { default: () => '下载' })
+          : null,
+        r.status === 'success' && r.file_path
+          ? h(NButton, { size: 'small', onClick: () => verify(r.id) }, { default: () => '验证' })
           : null,
         h(NPopconfirm, { onPositiveClick: () => remove(r.id) }, {
           trigger: () => h(NButton, { size: 'small', type: 'error', ghost: true }, { default: () => '删除' }),

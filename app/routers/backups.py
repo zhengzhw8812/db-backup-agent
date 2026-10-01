@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app import config
 from app.db.session import get_db
 from app.db.models import BackupRecord
+from app.schemas.job import VerifyRunResponse
 from app.deps import get_current_account
 from app.schemas.job import BackupFileOut
 
@@ -68,3 +69,18 @@ def delete_backup(record_id: int, request: Request, db: Session = Depends(get_db
             file_path.unlink()
         except OSError:
             pass  # 文件已不在也算成功
+
+
+@router.post("/backups/{record_id}/verify", response_model=VerifyRunResponse, status_code=202)
+async def verify_backup(record_id: int, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    rec = db.get(BackupRecord, record_id)
+    if rec is None or rec.status != "success" or not rec.file_path:
+        raise HTTPException(status_code=409, detail="仅可验证已成功且有文件的备份")
+    from app.routers.jobs import _get_arq
+
+    try:
+        arq = await _get_arq(request.app)
+        await arq.enqueue_job("verify_job", record_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"任务队列不可用:{exc}")
+    return VerifyRunResponse(record_id=record_id, status="queued")
