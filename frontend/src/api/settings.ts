@@ -17,6 +17,11 @@ export interface NotificationSettings {
   notify_on_success: boolean
   notify_on_failure: boolean
   notify_watchdog: boolean
+  feishu_enabled: boolean
+  feishu_webhook: string | null  // 仅写入
+  feishu_secret: string | null   // 仅写入
+  serverchan_enabled: boolean
+  serverchan_sendkey: string | null  // 仅写入
 }
 
 export const getNotifications = () => client.get<NotificationSettings>('/settings/notifications')

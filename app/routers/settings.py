@@ -20,6 +20,7 @@ def _to_out(cfg: NotificationConfig) -> NotificationSettingsOut:
         wechat_enabled=cfg.wechat_enabled, wechat_corp_id=cfg.wechat_corp_id,
         wechat_agent_id=cfg.wechat_agent_id, notify_on_success=cfg.notify_on_success,
         notify_on_failure=cfg.notify_on_failure, notify_watchdog=cfg.notify_watchdog,
+        feishu_enabled=cfg.feishu_enabled, serverchan_enabled=cfg.serverchan_enabled,
         created_at=cfg.created_at,
     )
 
@@ -30,7 +31,8 @@ def _defaults_out() -> NotificationSettingsOut:
         email_enabled=False, smtp_host=None, smtp_port=None, smtp_ssl=False,
         smtp_starttls=True, smtp_user=None, smtp_from=None, recipients=None,
         wechat_enabled=False, wechat_corp_id=None, wechat_agent_id=None,
-        notify_on_success=True, notify_on_failure=True, notify_watchdog=True, created_at=datetime.now(timezone.utc),
+        notify_on_success=True, notify_on_failure=True, notify_watchdog=True,
+        feishu_enabled=False, serverchan_enabled=False, created_at=datetime.now(timezone.utc),
     )
 
 
@@ -64,6 +66,15 @@ def put_notifications(payload: NotificationSettings, request: Request,
     cfg.notify_on_success = payload.notify_on_success
     cfg.notify_on_failure = payload.notify_on_failure
     cfg.notify_watchdog = payload.notify_watchdog
+    cfg.feishu_enabled = payload.feishu_enabled
+    cfg.serverchan_enabled = payload.serverchan_enabled
+    # 凭据:非空才更新(空串/None 不覆盖已存密文)
+    if payload.feishu_webhook:
+        cfg.feishu_webhook_enc = crypto.encrypt(payload.feishu_webhook)
+    if payload.feishu_secret:
+        cfg.feishu_secret_enc = crypto.encrypt(payload.feishu_secret)
+    if payload.serverchan_sendkey:
+        cfg.serverchan_sendkey_enc = crypto.encrypt(payload.serverchan_sendkey)
     # 凭据:非空才更新(避免空串覆盖已存密文)
     if payload.smtp_password:
         cfg.smtp_password_enc = crypto.encrypt(payload.smtp_password)

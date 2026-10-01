@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 import pytest
 from app.db.session import init_engine, create_all
 from app.db import session as _session
@@ -118,3 +119,110 @@ def test_wechat_token_is_cached(monkeypatch):
     assert n._wechat_token("corp", "secret") == "TOK"  # 复用缓存
     assert calls["n"] == 1
     n._wechat_token_cache.clear()
+
+
+@pytest.fixture
+def crypto():
+    return Crypto(Fernet.generate_key())
+
+
+class FakePost:
+    """捕获 requests.post 调用。"""
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, url, json=None, data=None, timeout=None):
+        self.calls.append({"url": url, "json": json, "data": data})
+        return SimpleNamespace(ok=True, raise_for_status=lambda: None)
+
+
+def _cfg_with(crypto, **kw):
+    cfg = NotificationConfig(email_enabled=False, wechat_enabled=False, **kw)
+    return cfg
+
+
+def test_send_feishu_posts_text_and_signature(crypto, monkeypatch):
+    import base64
+    import hashlib
+    import hmac as hmac_mod
+
+    from app.services.notifications import _send_feishu
+    post = FakePost()
+    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    secret = "mysec"
+    cfg = _cfg_with(crypto, feishu_enabled=True,
+                    feishu_webhook_enc=crypto.encrypt("https://open.feishu.cn/hook/x"),
+                    feishu_secret_enc=crypto.encrypt(secret))
+    _send_feishu(cfg, "hello", crypto)
+    call = post.calls[0]
+    assert call["url"] == "https://open.feishu.cn/hook/x"
+    body = call["json"]
+    assert body["msg_type"] == "text" and body["content"]["text"] == "hello"
+    ts, sign = body["timestamp"], body["sign"]
+    expect = base64.b64encode(hmac_mod.new(
+        f"{ts}\n{secret}".encode(), b"", hashlib.sha256).digest()).decode()
+    assert sign == expect
+
+
+def test_send_serverchan_posts_title_desp(crypto, monkeypatch):
+    from app.services.notifications import _send_serverchan
+    post = FakePost()
+    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    cfg = _cfg_with(crypto, serverchan_enabled=True,
+                    serverchan_sendkey_enc=crypto.encrypt("SCT123"))
+    _send_serverchan(cfg, "标题", "内容", crypto)
+    call = post.calls[0]
+    assert call["url"] == "https://sctapi.ftqq.com/SCT123.send"
+    assert call["data"] == {"title": "标题", "desp": "内容"}
+
+
+def test_dispatcher_includes_new_channels(crypto, monkeypatch):
+    """notify_backup_result 分发到飞书与 Server酱,受成功/失败开关约束。"""
+    from app.services import notifications as nm
+
+    sent = {}
+    monkeypatch.setattr(nm, "_send_feishu", lambda cfg, content, cr: sent.setdefault("feishu", content))
+    monkeypatch.setattr(nm, "_send_serverchan", lambda cfg, title, content, cr: sent.setdefault("serverchan", title))
+
+    db = _session_db()
+    cfg = _cfg_with(crypto, feishu_enabled=True,
+                    feishu_webhook_enc=crypto.encrypt("https://h"),
+                    serverchan_enabled=True,
+                    serverchan_sendkey_enc=crypto.encrypt("K"))
+    db.add(cfg); db.commit()
+    conn = _conn(db)
+    rec = _record(db, conn.id, status="success")
+
+    out = nm.notify_backup_result(db, crypto, conn, rec)
+    db.close()
+    assert out["feishu"] and out["serverchan"]
+    assert "feishu" in sent and "serverchan" in sent
+
+
+def _session_db():
+    import tempfile
+    from pathlib import Path as _P
+    from app.db.session import init_engine, create_all
+    from app.db import session as _session
+    import app.db.models  # noqa
+
+    init_engine(f"sqlite:///{_P(tempfile.mkdtemp())/'t.db'}")
+    create_all()
+    return _session._SessionLocal()
+
+
+def _conn(db):
+    from app.db.models import DbConnection
+
+    c = DbConnection(name="c", type="pg")
+    db.add(c); db.commit(); db.refresh(c)
+    return c
+
+
+def _record(db, cid, status):
+    from app.db.models import BackupRecord
+    from app.core.clock import utcnow
+
+    r = BackupRecord(connection_id=cid, trigger="manual", status=status, started_at=utcnow())
+    db.add(r); db.commit(); db.refresh(r)
+    return r

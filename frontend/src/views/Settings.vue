@@ -12,13 +12,15 @@ const f = ref<NotificationSettings>({
   smtp_user: null, smtp_password: null, smtp_from: null, recipients: null,
   wechat_enabled: false, wechat_corp_id: null, wechat_agent_id: null, wechat_secret: null,
   notify_on_success: true, notify_on_failure: true, notify_watchdog: true,
+  feishu_enabled: false, feishu_webhook: null, feishu_secret: null,
+  serverchan_enabled: false, serverchan_sendkey: null,
 })
 
 async function load() {
   try {
     const { data } = await setApi.getNotifications()
     // 读回时密码/secret 为空(后端不回传),保留空以免覆盖
-    f.value = { ...data, smtp_password: null, wechat_secret: null }
+    f.value = { ...data, smtp_password: null, wechat_secret: null, feishu_webhook: null, feishu_secret: null, serverchan_sendkey: null }
     loaded.value = true
   } catch (e: any) {
     msg.error('加载通知配置失败,请刷新重试')
@@ -29,8 +31,8 @@ async function save() {
   try {
     await setApi.putNotifications(f.value)
     msg.success('已保存')
-    f.value.smtp_password = null
-    f.value.wechat_secret = null
+    f.value.smtp_password = null; f.value.wechat_secret = null
+    f.value.feishu_webhook = null; f.value.feishu_secret = null; f.value.serverchan_sendkey = null
   } catch (e: any) { msg.error(e.response?.data?.detail || '保存失败') }
   finally { loading.value = false }
 }
@@ -86,6 +88,19 @@ onMounted(() => { load(); loadVerify() })
           </n-space>
         </template>
       </n-form>
+    
+    <n-card title="飞书 / 个人微信(Server酱)" :bordered="false">
+      <n-form label-placement="top">
+        <n-space align="center">
+          <n-form-item label="启用飞书机器人"><n-switch v-model:value="f.feishu_enabled" /></n-form-item>
+          <n-form-item label="启用 Server酱"><n-switch v-model:value="f.serverchan_enabled" /></n-form-item>
+        </n-space>
+        <n-form-item label="飞书 Webhook 地址"><n-input v-model:value="f.feishu_webhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx(已保存则留空)" /></n-form-item>
+        <n-form-item label="飞书加签密钥(可选)"><n-input v-model:value="f.feishu_secret" type="password" placeholder="(已保存则留空)" /></n-form-item>
+        <n-form-item label="Server酱 SendKey"><n-input v-model:value="f.serverchan_sendkey" type="password" placeholder="SCT...(已保存则留空)" /></n-form-item>
+        <n-text depth="3">备份成功/失败与失联告警将按各渠道开关推送;Webhook/SendKey 保存后不回显,留空即保持原值。</n-text>
+      </n-form>
+    </n-card>
     </n-card>
 
     <n-card title="企业微信" :bordered="false">

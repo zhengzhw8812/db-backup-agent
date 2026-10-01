@@ -20,6 +20,11 @@ class NotificationSettings(BaseModel):
     notify_on_success: bool = True
     notify_on_failure: bool = True
     notify_watchdog: bool = True
+    feishu_enabled: bool = False
+    feishu_webhook: str | None = None      # 仅写入
+    feishu_secret: str | None = None       # 仅写入
+    serverchan_enabled: bool = False
+    serverchan_sendkey: str | None = None  # 仅写入
 
 
 class NotificationSettingsOut(BaseModel):
@@ -37,6 +42,8 @@ class NotificationSettingsOut(BaseModel):
     notify_on_success: bool
     notify_on_failure: bool
     notify_watchdog: bool
+    feishu_enabled: bool
+    serverchan_enabled: bool
     created_at: datetime
     # 不含 smtp_password / wechat_secret
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 import json
+import base64
+import hashlib
+import hmac as hmac_mod
 import smtplib
 import time
 import urllib.parse
@@ -7,6 +10,8 @@ import urllib.request
 from email.mime.text import MIMEText
 
 from sqlalchemy.orm import Session
+
+import requests
 
 from app.db.models import DbConnection, BackupRecord, NotificationConfig
 from app.core.crypto import Crypto
@@ -67,6 +72,30 @@ def _send_wechat(cfg: NotificationConfig, content: str, secret: str) -> None:
         raise RuntimeError(f"企业微信发送失败: {data}")
 
 
+def _send_feishu(cfg: NotificationConfig, content: str, crypto: Crypto) -> None:
+    """飞书自定义机器人:文本消息;配置了加签密钥时附 timestamp+sign。失败抛异常。"""
+    webhook = crypto.decrypt(cfg.feishu_webhook_enc)
+    payload: dict = {"msg_type": "text", "content": {"text": content}}
+    if cfg.feishu_secret_enc:
+        secret = crypto.decrypt(cfg.feishu_secret_enc)
+        timestamp = str(int(__import__("time").time()))
+        sign = base64.b64encode(
+            hmac_mod.new(f"{timestamp}\n{secret}".encode(), b"", hashlib.sha256).digest()
+        ).decode()
+        payload["timestamp"] = timestamp
+        payload["sign"] = sign
+    resp = requests.post(webhook, json=payload, timeout=15)
+    resp.raise_for_status()
+
+
+def _send_serverchan(cfg: NotificationConfig, title: str, content: str, crypto: Crypto) -> None:
+    """Server酱 Turbo:推送到个人微信。失败抛异常。"""
+    key = crypto.decrypt(cfg.serverchan_sendkey_enc)
+    resp = requests.post(f"https://sctapi.ftqq.com/{key}.send",
+                         data={"title": title, "desp": content}, timeout=15)
+    resp.raise_for_status()
+
+
 def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record: BackupRecord) -> dict:
     """按配置发送备份结果通知。无配置/相应开关关闭 → 跳过。邮件与微信独立 try/except。"""
     cfg = db.query(NotificationConfig).first()
@@ -84,7 +113,7 @@ def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record
             f"耗时:{record.duration_ms if record.duration_ms is not None else '-'} ms\n"
             f"错误:{record.error or '无'}")
 
-    sent = {"email": False, "wechat": False}
+    sent = {"email": False, "wechat": False, "feishu": False, "serverchan": False}
     if cfg.email_enabled:
         try:
             # 解密到局部变量传入,绝不回写到 ORM *_enc 列(否则一旦 commit 会把明文落库)
@@ -100,7 +129,24 @@ def notify_backup_result(db: Session, crypto: Crypto, conn: DbConnection, record
             sent["wechat"] = True
         except Exception:
             sent["wechat"] = False
+    _send_extras(cfg, crypto, sent, title=subject, content=body)
     return sent
+
+
+def _send_extras(cfg: NotificationConfig, crypto: Crypto, sent: dict, *, title: str, content: str) -> None:
+    """飞书与 Server酱 渠道循环(供 notify_backup_result / notify_generic 共用)。"""
+    if cfg.feishu_enabled:
+        try:
+            _send_feishu(cfg, content, crypto)
+            sent["feishu"] = True
+        except Exception:
+            sent["feishu"] = False
+    if cfg.serverchan_enabled:
+        try:
+            _send_serverchan(cfg, title, content, crypto)
+            sent["serverchan"] = True
+        except Exception:
+            sent["serverchan"] = False
 
 
 def notify_generic(db: Session, crypto: Crypto, *, kind: str, subject: str, content: str) -> dict:
@@ -112,7 +158,7 @@ def notify_generic(db: Session, crypto: Crypto, *, kind: str, subject: str, cont
     toggle = {"watchdog": cfg.notify_watchdog, "failure": cfg.notify_on_failure}.get(kind, True)
     if not toggle:
         return {"email": False, "wechat": False}
-    sent = {"email": False, "wechat": False}
+    sent = {"email": False, "wechat": False, "feishu": False, "serverchan": False}
     if cfg.email_enabled:
         try:
             pw = crypto.decrypt(cfg.smtp_password_enc) if cfg.smtp_password_enc else ""
@@ -127,4 +173,5 @@ def notify_generic(db: Session, crypto: Crypto, *, kind: str, subject: str, cont
             sent["wechat"] = True
         except Exception:
             pass
+    _send_extras(cfg, crypto, sent, title=subject, content=content)
     return sent

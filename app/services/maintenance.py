@@ -53,6 +53,11 @@ def migrate_schema(db: Session) -> None:
     _ensure_column(db, "notification_config", "notify_watchdog", "BOOLEAN NOT NULL DEFAULT 1")
     _ensure_column(db, "cloud_destinations", "mount_config", "TEXT")
     _ensure_column(db, "cloud_destinations", "mount_password_enc", "TEXT")
+    _ensure_column(db, "notification_config", "feishu_enabled", "BOOLEAN NOT NULL DEFAULT 0")
+    _ensure_column(db, "notification_config", "feishu_webhook_enc", "TEXT")
+    _ensure_column(db, "notification_config", "feishu_secret_enc", "TEXT")
+    _ensure_column(db, "notification_config", "serverchan_enabled", "BOOLEAN NOT NULL DEFAULT 0")
+    _ensure_column(db, "notification_config", "serverchan_sendkey_enc", "TEXT")
     _backfill_db_names(db)
     _backfill_record_db_names(db)
 

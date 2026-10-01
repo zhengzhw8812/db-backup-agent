@@ -143,6 +143,12 @@ class NotificationConfig(Base):
     notify_on_success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_on_failure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_watchdog: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 飞书机器人与 Server酱(个人微信);凭据列只写不回显
+    feishu_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    feishu_webhook_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feishu_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    serverchan_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    serverchan_sendkey_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
