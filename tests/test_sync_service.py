@@ -123,7 +123,7 @@ class RecordingDeleteStorage(FakeStorage):
 def _add_dest(db, crypto, conn_id, *, name="m2", bucket="bk2", prefix="", enabled=True, target_enabled=True):
     dest = CloudDestination(name=name, provider="s3", endpoint="h2:9000", bucket=bucket,
                             access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
-                            prefix=prefix, secure=False, enabled=True)
+                            prefix=prefix, secure=False, enabled=enabled)
     db.add(dest); db.commit(); db.refresh(dest)
     db.add(SyncTarget(connection_id=conn_id, cloud_destination_id=dest.id, enabled=target_enabled))
     db.commit()
@@ -205,5 +205,6 @@ def test_delete_cloud_copies_skips_disabled_destination(tmp_path, monkeypatch):
     _add_dest(db, crypto, conn.id, bucket="bk-off", enabled=False)  # 目的地禁用
     deleted, failed = delete_cloud_copies(db, crypto, conn.id, "pg.sql.gz")
     db.close()
-    assert (deleted, failed) == (0, 0)
-    assert storage.deletes == []
+    # _setup 的启用目的地照常删除;禁用的 bk-off 被跳过
+    assert (deleted, failed) == (1, 0)
+    assert storage.deletes == [("bk", "pre/pg.sql.gz")]
