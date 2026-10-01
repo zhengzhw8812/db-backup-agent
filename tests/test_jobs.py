@@ -52,7 +52,7 @@ def test_backup_worker_runs_retention_and_notify(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.backup_service.get_adapter", lambda t: FakeAdapter())
     monkeypatch.setattr("app.workers.jobs.ProgressReporter", lambda rid: FakeReporter())
     calls = {}
-    monkeypatch.setattr("app.workers.jobs.run_retention", lambda db, conn, bdir: calls.setdefault("retention", True) or 0)
+    monkeypatch.setattr("app.workers.jobs.run_retention", lambda db, crypto, conn, bdir: calls.setdefault("retention", True) or 0)
     monkeypatch.setattr("app.workers.jobs.notify_backup_result", lambda *a: calls.setdefault("notify", True) or {"email": False, "wechat": False})
     init_engine(f"sqlite:///{tmp_path/'t.db'}")
     create_all()

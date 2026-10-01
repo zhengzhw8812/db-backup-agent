@@ -4,6 +4,8 @@ from app.db import session as _session
 import app.db.models  # noqa
 from app.db.models import DbConnection, BackupRecord, Schedule
 from app.services.retention import run_retention
+from cryptography.fernet import Fernet
+from app.core.crypto import Crypto
 from app.core.clock import utcnow
 
 
@@ -34,7 +36,7 @@ def test_retention_deletes_old_backups(tmp_path):
     db, conn, bdir = _setup(tmp_path)
     old = _mk(db, conn, bdir, "old.sql.gz", days_old=30)
     fresh = _mk(db, conn, bdir, "fresh.sql.gz", days_old=1)
-    count = run_retention(db, conn, bdir)
+    count = run_retention(db, Crypto(Fernet.generate_key()), conn, bdir)
     assert count == 1
     assert db.get(BackupRecord, old.id) is None
     assert db.get(BackupRecord, fresh.id) is not None
@@ -48,7 +50,7 @@ def test_retention_no_schedule_skips(tmp_path):
     bdir = tmp_path / "backups"; bdir.mkdir()
     db = _session._SessionLocal()
     conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
-    assert run_retention(db, conn, bdir) == 0   # 无计划 → 不清理
+    assert run_retention(db, Crypto(Fernet.generate_key()), conn, bdir) == 0   # 无计划 → 不清理
     db.close()
 
 
@@ -60,7 +62,7 @@ def test_retention_only_cleans_success(tmp_path):
                        file_path="f.sql.gz",
                        started_at=utcnow() - timedelta(days=30))
     db.add(rec); db.commit()
-    assert run_retention(db, conn, bdir) == 0   # 非 success 不删
+    assert run_retention(db, Crypto(Fernet.generate_key()), conn, bdir) == 0   # 非 success 不删
     db.close()
 
 
@@ -73,7 +75,7 @@ def test_retention_zero_days_floored_to_one(tmp_path):
     db.add(Schedule(connection_id=conn.id, cron_expr="0 2 * * *", retention_days=0, enabled=True))
     db.commit()
     fresh = _mk(db, conn, bdir, "fresh.sql.gz", days_old=0)  # 刚生成(几秒前)
-    count = run_retention(db, conn, bdir)
+    count = run_retention(db, Crypto(Fernet.generate_key()), conn, bdir)
     assert count == 0  # 不会被立刻清掉
     assert db.get(BackupRecord, fresh.id) is not None
     db.close()

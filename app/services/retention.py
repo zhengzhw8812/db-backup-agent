@@ -8,7 +8,7 @@ from app.core.fsutil import safe_remove
 from app.core.clock import utcnow
 
 
-def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
+def run_retention(db: Session, crypto, conn: DbConnection, backup_dir: Path) -> int:
     """删除该连接超过最激进 retention_days 的成功备份(文件+记录)。无计划 → 0。"""
     schedules = (
         db.query(Schedule)
@@ -30,6 +30,9 @@ def run_retention(db: Session, conn: DbConnection, backup_dir: Path) -> int:
     count = 0
     for rec in old:
         if rec.file_path:
+            # 云联动先行:云端失败已在内部记日志并继续;随后删本地(文件+记录)
+            from app.services.sync_service import delete_cloud_copies
+            delete_cloud_copies(db, crypto, conn.id, rec.file_path)
             safe_remove(backup_dir / rec.file_path)
         db.delete(rec)
         count += 1

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -48,13 +48,16 @@ def download(record_id: int, db: Session = Depends(get_db), _=Depends(get_curren
 
 
 @router.delete("/backups/{record_id}", status_code=204)
-def delete_backup(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
+def delete_backup(record_id: int, request: Request, db: Session = Depends(get_db), _=Depends(get_current_account)):
     rec = db.get(BackupRecord, record_id)
     if rec is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     # 先删记录再删文件:若 commit 失败,文件仍在,记录也仍在(一致);反之会留指向缺失文件的记录
     file_path = None
     if rec.file_path:
+        # 云联动按 file_path 属性判定(本地文件缺失不代表云端没有),且在本地删除之前
+        from app.services.sync_service import delete_cloud_copies
+        delete_cloud_copies(db, request.app.state.crypto, rec.connection_id, rec.file_path)
         try:
             file_path = _resolve(rec)
         except HTTPException:

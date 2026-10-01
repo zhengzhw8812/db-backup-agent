@@ -37,7 +37,7 @@ def _run_backup_sync(ctx, connection_id: int, record_ids: list[int]) -> dict:
         # 保留期清理是连接级(扫描该连接所有记录),整批跑一次即可,不必逐 record
         if any_success:
             try:
-                run_retention(db, conn, ctx["backup_dir"])
+                run_retention(db, crypto, conn, ctx["backup_dir"])
             except Exception:
                 pass  # 保留清理失败不影响备份结果
         return {"results": results}

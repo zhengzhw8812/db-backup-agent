@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from sqlalchemy.orm import Session
 
-from app.db.models import BackupRecord, SyncTarget, CloudDestination
+from app.db.models import BackupRecord, SyncTarget, CloudDestination, SystemLog
 from app.core.crypto import Crypto
 from app.cloud.base import CloudConfig, get_storage
 
@@ -51,3 +51,29 @@ def run_sync(db: Session, crypto: Crypto, backup_record: BackupRecord, backup_di
         except Exception as exc:
             errors.append({"target_id": t.id, "destination": dest.name, "error": str(exc)})
     return {"synced": synced, "errors": errors}
+
+
+def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: str) -> int:
+    """删除该连接所有启用云目标上的对象 key(对象名与上传时一致,即备份记录的 file_path)。
+
+    单目标失败:记 SystemLog(warning)后继续,不阻塞不回滚。返回成功删除数。"""
+    targets = (
+        db.query(SyncTarget)
+        .filter(SyncTarget.connection_id == connection_id, SyncTarget.enabled.is_(True))
+        .all()
+    )
+    deleted = 0
+    for t in targets:
+        dest = db.get(CloudDestination, t.cloud_destination_id)
+        if dest is None:
+            continue
+        try:
+            cfg = _cloud_config(dest, crypto)
+            get_storage(dest.provider).delete(cfg, key)
+            deleted += 1
+        except Exception as exc:
+            db.add(SystemLog(level="warning", source="cloud",
+                             message=f"云副本删除失败:{dest.name}:{key}",
+                             context=str(exc)))
+            db.commit()
+    return deleted

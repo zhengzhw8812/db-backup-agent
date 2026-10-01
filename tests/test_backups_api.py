@@ -66,3 +66,38 @@ def test_list_pagination(authed):
     page2 = authed.get("/api/v1/backups?limit=2&offset=2").json()
     assert len(page1) == 2
     assert len(page2) == 1  # 共 3 条,第二页只剩 1 条
+
+
+def test_manual_delete_deletes_cloud_copies(authed, monkeypatch):
+    from app.db.models import CloudDestination, DbConnection, SyncTarget
+    from cryptography.fernet import Fernet
+    from app.core.crypto import Crypto
+
+    class RecStorage:
+        def __init__(self):
+            self.deletes = []
+        def delete(self, cfg, key):
+            self.deletes.append((cfg.bucket, key))
+        def upload(self, cfg, local_path, key): return "s3://x/y"
+        def test(self, cfg): pass
+
+    storage = RecStorage()
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: storage)
+    crypto = authed.app.state.crypto
+    db = _session._SessionLocal()
+    try:
+        conn = db.query(DbConnection).first()
+        dest = CloudDestination(name="m", provider="s3", endpoint="h:9000", bucket="bk",
+                                access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
+                                prefix="", secure=False, enabled=True)
+        db.add(dest); db.commit(); db.refresh(dest)
+        db.add(SyncTarget(connection_id=conn.id, cloud_destination_id=dest.id, enabled=True))
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                           file_path="a.sql.gz", started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    resp = authed.delete(f"/api/v1/backups/{rid}")
+    assert resp.status_code == 204
+    assert storage.deletes == [("bk", "a.sql.gz")]
