@@ -107,6 +107,9 @@ class CloudDestination(Base):
     prefix: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     secure: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # NFS/SMB 挂载配置(JSON,非密字段)与 SMB 密码(Fernet);provider=nfs/smb 时使用
+    mount_config: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mount_password_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 

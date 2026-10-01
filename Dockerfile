@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         redis-server \
         supervisor \
         gzip \
+        nfs-common \
+        cifs-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

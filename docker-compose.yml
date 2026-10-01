@@ -4,6 +4,8 @@ services:
     image: db-backup-agent:latest
     container_name: db-backup-agent
     restart: unless-stopped
+    # NFS/SMB 备份目的地需要在容器内挂载文件系统,必须特权模式
+    privileged: true
     ports:
       - "8000:8000"
     volumes:

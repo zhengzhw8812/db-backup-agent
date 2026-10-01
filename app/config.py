@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
 
     data_dir: Path = Path("/data")
+    # NFS/SMB 目的地挂载点根目录(容器内默认 /mnt;测试可覆盖)
+    mount_root: Path = Path("/mnt")
     static_dir: Path = Path("/app/static")
     redis_url: str = "redis://127.0.0.1:6379/0"
     secret_key: str = ""
