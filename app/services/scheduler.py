@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db import session as _session
-from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection
+from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection, NotificationConfig
 from app.services.locks import has_running_backup
 from app.core.clock import utcnow
 
@@ -194,50 +194,63 @@ async def watchdog_check(app) -> None:
     try:
         schedules = db.query(Schedule).filter(Schedule.enabled == True).all()  # noqa: E712
         for s in schedules:
-            last_alert = get_setting(db, f"watchdog:{s.id}")
-            if last_alert:
+            # 单计划整体隔离:任何异常(表达式非法、DB 抖动等)只影响本计划,记日志后继续
+            try:
+                last_alert = get_setting(db, f"watchdog:{s.id}")
+                if last_alert:
+                    try:
+                        if now - datetime.fromisoformat(last_alert) < timedelta(hours=24):
+                            continue
+                    except ValueError:
+                        pass
                 try:
-                    if now - datetime.fromisoformat(last_alert) < timedelta(hours=24):
+                    trigger = CronTrigger.from_crontab(s.cron_expr)
+                    nxt1 = trigger.get_next_fire_time(None, now)
+                    nxt2 = trigger.get_next_fire_time(nxt1, nxt1) if nxt1 else None
+                except Exception:
+                    db.add(SystemLog(level="warning", source="watchdog",
+                                     message=f"计划 #{s.id} cron 表达式非法,跳过检查:{s.cron_expr}"))
+                    db.commit()
+                    continue
+                if not nxt1 or not nxt2:
+                    continue
+                threshold = (nxt2 - nxt1) * 2
+                last = (
+                    db.query(BackupRecord.started_at)
+                    .filter(BackupRecord.connection_id == s.connection_id,
+                            BackupRecord.status == "success")
+                    .order_by(BackupRecord.started_at.desc())
+                    .first()
+                )
+                if last and last[0]:
+                    if (now - last[0]) <= threshold:
                         continue
-                except ValueError:
-                    pass
-            try:
-                trigger = CronTrigger.from_crontab(s.cron_expr)
-                nxt1 = trigger.get_next_fire_time(None, now)
-                nxt2 = trigger.get_next_fire_time(nxt1, nxt1) if nxt1 else None
-            except Exception:
-                db.add(SystemLog(level="warning", source="watchdog",
-                                 message=f"计划 #{s.id} cron 表达式非法,跳过检查:{s.cron_expr}"))
-                db.commit()
-                continue
-            if not nxt1 or not nxt2:
-                continue
-            threshold = (nxt2 - nxt1) * 2
-            last = (
-                db.query(BackupRecord.started_at)
-                .filter(BackupRecord.connection_id == s.connection_id,
-                        BackupRecord.status == "success")
-                .order_by(BackupRecord.started_at.desc())
-                .first()
-            )
-            if last and last[0]:
-                if (now - last[0]) <= threshold:
-                    continue
-                overdue_desc = f"距上次成功 {now - last[0]}"
-            else:
+                    overdue_desc = f"距上次成功 {now - last[0]}"
+                else:
+                    conn = db.get(DbConnection, s.connection_id)
+                    if conn is None or (now - (conn.created_at or now)) <= timedelta(hours=48):
+                        continue
+                    overdue_desc = "从未成功备份"
                 conn = db.get(DbConnection, s.connection_id)
-                if conn is None or (now - (conn.created_at or now)) <= timedelta(hours=48):
-                    continue
-                overdue_desc = "从未成功备份"
-            conn = db.get(DbConnection, s.connection_id)
-            name = conn.name if conn else f"#{s.connection_id}"
-            set_setting(db, f"watchdog:{s.id}", now.isoformat())
-            try:
-                notify_generic(db, crypto, kind="watchdog",
-                               subject=f"[备份失联] {name}",
-                               content=(f"数据库:{name}\n计划:{s.cron_expr}\n"
-                                        f"情况:{overdue_desc},已超过 2× 计划周期未成功备份,请检查容器/调度器。"))
-            except Exception:
-                pass
+                name = conn.name if conn else f"#{s.connection_id}"
+                sent = notify_generic(db, crypto, kind="watchdog",
+                                      subject=f"[备份失联] {name}",
+                                      content=(f"数据库:{name}\n计划:{s.cron_expr}\n"
+                                               f"情况:{overdue_desc},已超过 2× 计划周期未成功备份,请检查容器/调度器。"))
+                # 去重键只记录"真正送达"的告警:渠道配置缺失视为投递到空;
+                # 发送全失败 → 不写键,下一小时自动重试
+                cfg = db.query(NotificationConfig).first()
+                channels_configured = bool(cfg and (cfg.email_enabled or cfg.wechat_enabled))
+                if any(sent.values()) or not channels_configured:
+                    set_setting(db, f"watchdog:{s.id}", now.isoformat())
+            except Exception as exc:
+                try:
+                    db.rollback()
+                    db.add(SystemLog(level="warning", source="watchdog",
+                                     message=f"计划 #{s.id} 看门狗检查异常,跳过本轮:{exc}"))
+                    db.commit()
+                except Exception:
+                    pass
+                continue
     finally:
         db.close()

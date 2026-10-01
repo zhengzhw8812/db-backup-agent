@@ -135,3 +135,60 @@ def test_watchdog_registered_hourly(monkeypatch):
     assert "watchdog_check" in ids
     assert "auto_verify_weekly" in ids
     svc.stop()
+
+
+def test_watchdog_dedup_only_after_successful_send(env, monkeypatch):
+    """渠道已配置但发送失败(全 False)→ 不写去重键,下小时重试。"""
+    from app.db.models import NotificationConfig
+    from app.services.settings_service import get_setting
+
+    calls = []
+    monkeypatch.setattr("app.services.notifications.notify_generic",
+                        lambda db, crypto, *, kind, subject, content:
+                        calls.append((kind, subject)) or {"email": False, "wechat": False})
+    db, conn, sched, alerts = env
+    db.add(NotificationConfig(email_enabled=True, notify_watchdog=True))
+    db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
+                        started_at=utcnow() - timedelta(days=3)))
+    db.commit()
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert len(calls) == 1  # 告警尝试了
+    assert get_setting(db, f"watchdog:{sched.id}") is None  # 但未写去重键(发送失败)
+
+
+def test_watchdog_dedup_written_when_no_channels(env):
+    """完全未配置通知渠道 → 视为投递到空,写去重键避免每小时空转。"""
+    from app.services.settings_service import get_setting
+
+    db, conn, sched, alerts = env  # env 的 notify 假件返回 {"email": False} 且无渠道配置
+    db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
+                        started_at=utcnow() - timedelta(days=3)))
+    db.commit()
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert get_setting(db, f"watchdog:{sched.id}") is not None
+
+
+def test_watchdog_isolates_schedule_errors(env, monkeypatch):
+    """单计划检查中的意外异常不得中断其余计划的评估。"""
+    from app.services.settings_service import set_setting
+
+    db, conn, sched, alerts = env
+    conn2 = DbConnection(name="db2", type="pg", created_at=utcnow() - timedelta(days=10))
+    db.add(conn2); db.commit(); db.refresh(conn2)
+    db.add(Schedule(connection_id=conn2.id, cron_expr="0 4 * * *", enabled=True))
+    db.add(BackupRecord(connection_id=conn2.id, trigger="scheduled", status="success",
+                        started_at=utcnow() - timedelta(days=3)))
+    db.commit()
+
+    real = set_setting
+    calls = {"n": 0}
+
+    def flaky(db, key, value):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("boom")
+        return real(db, key, value)
+
+    monkeypatch.setattr("app.services.settings_service.set_setting", flaky)
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert len(alerts) == 2  # 两个计划都完成告警
