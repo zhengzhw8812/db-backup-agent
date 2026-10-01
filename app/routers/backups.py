@@ -45,7 +45,8 @@ def download(record_id: int, db: Session = Depends(get_db), _=Depends(get_curren
     if rec is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     path = _resolve(rec)
-    return FileResponse(path, filename=path.name)
+    # 显式 application/gzip:命入 GZip 中间件默认排除表,避免对已压缩备份做二次压缩
+    return FileResponse(path, filename=path.name, media_type="application/gzip")
 
 
 @router.delete("/backups/{record_id}", status_code=204)

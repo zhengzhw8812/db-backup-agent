@@ -184,3 +184,27 @@ def test_manual_delete_cloud_failure_keeps_record(authed, monkeypatch):
     db = _session._SessionLocal()
     assert db.get(BackupRecord, rid) is not None  # 记录保留
     db.close()
+
+
+def test_backup_download_not_double_compressed(authed, monkeypatch, tmp_path):
+    """.gz 下载不应用 gzip 传输编码(文件本身已压缩;GZip 中间件按类型排除)。"""
+    from app.db.models import DbConnection
+
+    db = _session._SessionLocal()
+    try:
+        conn = db.query(DbConnection).first()
+        rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                           file_path="c.sql.gz", started_at=utcnow())
+        db.add(rec); db.commit(); db.refresh(rec)
+        rid = rec.id
+    finally:
+        db.close()
+    bdir = authed.app.state.crypto  # noqa: F841 (占位,真实目录如下)
+    from app import config as app_config
+    bpath = app_config.settings.data_dir / "backups"
+    bpath.mkdir(parents=True, exist_ok=True)
+    (bpath / "c.sql.gz").write_bytes(b"\x1f\x8b" + b"x" * 2048)  # 最小 gzip 头 + 填充
+    resp = authed.get(f"/api/v1/backups/{rid}/download", headers={"Accept-Encoding": "gzip"})
+    assert resp.status_code == 200
+    assert resp.headers.get("content-encoding") != "gzip"
+    assert resp.headers["content-type"] == "application/gzip"
