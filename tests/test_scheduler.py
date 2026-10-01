@@ -113,17 +113,19 @@ def test_auto_verify_enqueues_eligible(client, monkeypatch, tmp_path):
     conn = DbConnection(name="c", type="pg")
     db.add(conn); db.commit(); db.refresh(conn)
     old = utcnow() - timedelta(days=40)
-    db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
-                        file_path="p.sql.gz", checksum="0" * 64, started_at=utcnow()))
+    r_eligible = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                              file_path="p.sql.gz", checksum="0" * 64, started_at=utcnow())
+    db.add(r_eligible)
     db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="success",
                         started_at=old, verify_status="passed", verified_at=utcnow()))
     db.add(BackupRecord(connection_id=conn.id, trigger="manual", status="failed", started_at=utcnow()))
-    db.commit()
+    db.commit(); db.refresh(r_eligible)
 
     set_setting(db, "verify_auto_enabled", True)
     import asyncio
     asyncio.run(sched_mod.auto_verify_weekly(client.app))
-    assert [a[1] for a in fake.enqueued] and all(a[0] == "verify_job" for a in fake.enqueued)
+    # 精确钉扎:仅未验证记录入队,30 天内已验证与 failed 记录被排除
+    assert fake.enqueued == [("verify_job", r_eligible.id)]
     n_enabled = len(fake.enqueued)
 
     set_setting(db, "verify_auto_enabled", False)

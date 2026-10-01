@@ -126,3 +126,12 @@ def test_verify_success_does_not_notify(tmp_path, monkeypatch):
     db.close()
     _run_verify_sync({"backup_dir": bdir}, rid)
     assert alerts == []
+
+
+def test_verify_zero_byte_file_fails(tmp_path):
+    """0 字节文件不是合法 gzip → failed(而不是 passed)。"""
+    db, bdir, rec = _setup(tmp_path, with_file=False)
+    (bdir / "p.sql.gz").write_bytes(b"")
+    out = run_verify(db, rec, bdir)
+    db.close()
+    assert out.verify_status == "failed"

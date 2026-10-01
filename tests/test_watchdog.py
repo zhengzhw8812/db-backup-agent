@@ -17,11 +17,11 @@ from app.services.settings_service import set_setting
 
 
 class FakeSched:
-    """替代 AsyncIOScheduler,记录注册的 job。"""
+    """替代 AsyncIOScheduler,记录注册的 job(含触发器)。"""
     def __init__(self):
         self.jobs = []
     def add_job(self, fn, trigger, **kw):
-        self.jobs.append((fn, kw.get("id")))
+        self.jobs.append((fn, kw.get("id"), trigger))
     def start(self): pass
     def shutdown(self, wait=False): pass
     def get_job(self, _): return None
@@ -131,9 +131,13 @@ def test_watchdog_registered_hourly(monkeypatch):
     monkeypatch.setattr(sched_mod, "AsyncIOScheduler", lambda: FakeSched())
     svc = _service()
     asyncio.run(svc.start())
-    ids = [j[1] for j in svc._sched.jobs]
-    assert "watchdog_check" in ids
-    assert "auto_verify_weekly" in ids
+    jobs = {j[1]: j[2] for j in svc._sched.jobs}
+    assert "watchdog_check" in jobs and "auto_verify_weekly" in jobs
+    # 间隔钉扎:看门狗每小时
+    from datetime import timedelta
+    from apscheduler.triggers.interval import IntervalTrigger
+    wd = jobs["watchdog_check"]
+    assert isinstance(wd, IntervalTrigger) and wd.interval == timedelta(hours=1)
     svc.stop()
 
 
@@ -192,3 +196,20 @@ def test_watchdog_isolates_schedule_errors(env, monkeypatch):
     monkeypatch.setattr("app.services.settings_service.set_setting", flaky)
     asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
     assert len(alerts) == 2  # 两个计划都完成告警
+
+
+def test_watchdog_five_minute_cron(env):
+    """*/5 周期:阈值 10 分钟——6 分钟前成功 → 静默;11 分钟前 → 告警。"""
+    db, conn, sched, alerts = env
+    sched.cron_expr = "*/5 * * * *"
+    db.commit()
+    db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
+                        started_at=utcnow() - timedelta(minutes=6)))
+    db.commit()
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert alerts == []
+    rec = db.query(BackupRecord).first()
+    rec.started_at = utcnow() - timedelta(minutes=11)
+    db.commit()
+    asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
+    assert len(alerts) == 1
