@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, computed, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NSelect, NSpace, NButton, NDrawer, NDrawerContent,
@@ -111,7 +112,8 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 </script>
 
 <template>
-  <n-space vertical :size="16">
+  
+  <PageHeader title="恢复" description="从历史备份还原数据库" /><n-space vertical :size="16">
     <n-card title="一键恢复" :bordered="false">
       <n-space vertical :size="12">
         <n-space align="center">

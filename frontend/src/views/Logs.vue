@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, onMounted } from 'vue'
 import { NCard, NDataTable, NTag, NButton, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -34,7 +35,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="系统日志" :bordered="false">
+  
+  <PageHeader title="系统日志" description="运行事件与错误" /><n-card title="系统日志" :bordered="false">
     <template #header-extra>
       <n-space align="center">
         <n-select v-model:value="level" :options="levelOpts" size="small" style="width:120px" @update:value="load" />

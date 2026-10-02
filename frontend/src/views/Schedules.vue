@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, onMounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
@@ -78,7 +79,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="备份计划" :bordered="false">
+  
+  <PageHeader title="备份计划" description="定时自动备份策略" /><n-card title="备份计划" :bordered="false">
     <template #header-extra><n-button type="primary" @click="openAdd">+ 新增计划</n-button></template>
     <n-data-table :columns="columns" :data="data" :loading="loading" :bordered="false" />
   </n-card>

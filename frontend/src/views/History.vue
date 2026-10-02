@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, onMounted } from 'vue'
 import { NCard, NDataTable, NButton, NSpace, NInput, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -41,7 +42,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="备份历史" :bordered="false">
+  
+  <PageHeader title="备份历史" description="全部备份执行记录" /><n-card title="备份历史" :bordered="false">
     <template #header-extra>
       <n-input v-model:value="filter" placeholder="筛选连接名…" clearable style="width:220px" />
     </template>

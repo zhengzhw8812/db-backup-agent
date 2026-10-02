@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, watch, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NSelect, NSpace, NDrawer, NDrawerContent,
@@ -151,7 +152,8 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 </script>
 
 <template>
-  <n-space vertical :size="16">
+  
+  <PageHeader title="备份" description="立即备份与备份文件管理" /><n-space vertical :size="16">
     <n-card title="立即备份" :bordered="false">
       <n-space align="center">
         <n-select

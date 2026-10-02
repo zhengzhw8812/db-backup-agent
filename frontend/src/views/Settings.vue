@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, onMounted } from 'vue'
 import { NCard, NPopconfirm, NList, NListItem, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
 import * as setApi from '../api/settings'
@@ -106,7 +107,8 @@ onMounted(() => { load(); loadVerify(); loadSnaps() })
 </script>
 
 <template>
-  <n-space vertical :size="16">
+  
+  <PageHeader title="设置" description="通知、验证与配置库自备份" /><n-space vertical :size="16">
     <n-card title="通知设置" :bordered="false">
       <n-form label-placement="top">
         <n-space align="center">

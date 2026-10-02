@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, computed, h, onMounted } from 'vue'
 import { NCard, NDataTable, NButton, NSpace, NModal, NForm, NFormItem, NInput, NSwitch, NTag, NSelect, NPopconfirm, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -88,7 +89,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-space vertical :size="16">
+  
+  <PageHeader title="云存储" description="备份目的地与同步规则" /><n-space vertical :size="16">
     <n-card title="云存储目标" :bordered="false">
       <template #header-extra>
         <n-button type="primary" @click="showDest = true">+ 添加</n-button>

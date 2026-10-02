@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { NCard, NGrid, NGridItem, NStatistic, NSpin, useMessage } from 'naive-ui'
 import VChart from 'vue-echarts'
@@ -65,7 +66,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-spin :show="loading">
+  
+  <PageHeader title="仪表盘" description="备份任务与存储概览" /><n-spin :show="loading">
     <n-grid :cols="4" :x-gap="16" :y-gap="16">
       <n-grid-item>
         <n-card :bordered="false">

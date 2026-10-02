@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { ref, h, onMounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
@@ -121,7 +122,8 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="数据库连接" :bordered="false">
+  
+  <PageHeader title="数据库连接" description="管理要备份的数据库连接" /><n-card title="数据库连接" :bordered="false">
     <template #header-extra>
       <n-button type="primary" @click="openAdd">+ 新增连接</n-button>
     </template>
