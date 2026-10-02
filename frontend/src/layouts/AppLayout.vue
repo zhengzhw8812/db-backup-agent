@@ -39,7 +39,7 @@ async function logout() { await auth.doLogout(); router.push('/login') }
 </script>
 
 <template>
-  <n-layout style="height:100vh">
+  <n-layout has-sider style="height:100vh">
     <!-- 桌面侧栏 -->
     <n-layout-sider
       v-if="!isMobile"
