@@ -1,5 +1,5 @@
 # ---------- Stage 1: 构建前端 ----------
-FROM node:20-bookworm-slim AS frontend
+FROM node:20-trixie-slim AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---------- Stage 2: 运行时 ----------
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-trixie
 
 # DB 客户端 + redis + supervisord(mongodump 暂略,见计划说明)
 RUN apt-get update && apt-get install -y --no-install-recommends \
