@@ -1,0 +1,36 @@
+name: Docker Publish
+
+# 打 v* 标签时自动构建 amd64+arm64 双架构镜像并推送 Docker Hub。
+# 前置:仓库 Settings → Secrets and variables → Actions 配置:
+#   DOCKERHUB_USERNAME = tony5188
+#   DOCKERHUB_TOKEN    = Docker Hub 的 Access Token
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: tony5188/db-backup-agent
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
