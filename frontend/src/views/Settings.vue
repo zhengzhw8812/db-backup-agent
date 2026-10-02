@@ -20,6 +20,8 @@ async function importSql() {
     await sbApi.importSql(fd)
     msg.success('已暂存,重启容器后生效')
     importFile.value = null
+    const el = document.querySelector<HTMLInputElement>('input[type="file"][accept=".sql"]')
+    if (el) el.value = '' 
   } catch (e: any) { msg.error(e.response?.data?.detail || '导入失败') }
 }
 
@@ -92,9 +94,9 @@ async function loadSnaps() {
   try { snaps.value = (await sbApi.listSelfBackups()).data } catch { /* 静默 */ }
 }
 
-async function runSelfBackupNow() {
+async function runSelfBackupNow(fmt: 'gz' | 'sql' = 'gz') {
   try {
-    const r = await sbApi.runSelfBackup()
+    const r = await sbApi.runSelfBackup(fmt)
     msg.success(`自备份完成:${r.data.name}`)
     await loadSnaps()
   } catch (e: any) { msg.error(e.response?.data?.detail || '自备份失败') }
@@ -175,7 +177,8 @@ onMounted(() => { load(); loadVerify(); loadSnaps() })
     <n-card title="配置库自备份" :bordered="false">
       <n-space vertical :size="8">
         <n-space align="center">
-          <n-button type="primary" @click="runSelfBackupNow">立即备份</n-button>
+          <n-button type="primary" @click="() => runSelfBackupNow('gz')">立即备份</n-button>
+          <n-button @click="() => runSelfBackupNow('sql')">导出 SQL</n-button>
           <n-button @click="() => (importFile ? importSql() : undefined)" :disabled="!importFile">导入 SQL 还原</n-button>
           <input type="file" accept=".sql" @change="pickImport" />
           <n-text depth="3">每日 04:00 自动备份配置库(VACUUM INTO 一致性快照),保留最近 7 份。恢复:下载快照后停容器、覆盖 data/sqlite/app.db、再启动。</n-text>

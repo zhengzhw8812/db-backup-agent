@@ -261,3 +261,112 @@ def test_upload_import_rejects_garbage(authed, tmp_path, monkeypatch):
     r = authed.post("/api/v1/self-backup/import",
                     files={"file": ("junk.sql", b"DROP TABLE x;", "application/sql")})
     assert r.status_code == 400
+
+
+def test_maybe_restore_garbage_marker_boots_old_db(tmp_path):
+    """C1:暂存脚本损坏(截断)→ 放弃还原、清标记与中间文件、旧库原样启动。"""
+    from app import config as app_config
+
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    live = tmp_path / "sqlite" / "app.db"
+    live.write_bytes(b"OLD-DB-BYTES")
+    (tmp_path / "sqlite" / ".restore-pending.sql").write_text("CREATE TABLE accoun")  # 截断
+    (tmp_path / "sqlite" / ".restore-new.db").write_bytes(b"stale")  # 上次失败残留
+
+    from app.services import self_backup as sb
+
+    info = sb.maybe_restore(tmp_path)
+    assert info is None
+    assert live.read_bytes() == b"OLD-DB-BYTES"  # 旧库原样
+    assert not (tmp_path / "sqlite" / ".restore-pending.sql").exists()  # 标记清理
+    assert not (tmp_path / "sqlite" / ".restore-new.db").exists()  # 中间文件清理
+
+
+def test_restore_lock_serializes(tmp_path):
+    """还原锁:持有期间非阻塞二次获取必须失败(worker 等待语义的基础)。"""
+    import fcntl
+
+    from app.services import self_backup as sb
+
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    with sb.restore_lock(tmp_path):
+        lockfile = open(tmp_path / "sqlite" / ".restore.lock")
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lockfile.close()
+
+
+def test_stage_restore_denies_attach(tmp_path):
+    """I4:ATTACH 外部库并破坏其内容的脚本 → 校验拒绝,外部库原样。"""
+    import sqlite3
+
+    from app.services import self_backup as sb
+
+    victim = tmp_path / "victim.db"
+    c = sqlite3.connect(victim)
+    c.execute("CREATE TABLE keepme(x)")
+    c.execute("INSERT INTO keepme VALUES (1)")
+    c.commit(); c.close()
+    sql = f"ATTACH DATABASE '{victim}' AS v; DROP TABLE v.keepme;"
+    with pytest.raises(ValueError):
+        sb.stage_restore(tmp_path, sql)
+    c = sqlite3.connect(victim)
+    n = c.execute("SELECT COUNT(*) FROM keepme").fetchone()[0]
+    c.close()
+    assert n == 1  # 外部库未被破坏
+
+
+def test_stage_restore_runaway_aborts(tmp_path):
+    """I4:失控脚本(递归 CTE)→ 在时限内中断并拒绝。"""
+    import time
+
+    from app.services import self_backup as sb
+
+    sql = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT x FROM c;"
+    t0 = time.monotonic()
+    with pytest.raises(ValueError):
+        sb.stage_restore(tmp_path, sql)
+    assert time.monotonic() - t0 < 15  # 时限 10s + 开销
+
+
+def test_upload_import_oversize_413(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    big = b"-- pad\n" + b"x" * (20 * 1024 * 1024 + 1)
+    r = authed.post("/api/v1/self-backup/import",
+                    files={"file": ("big.sql", big, "application/sql")})
+    assert r.status_code == 413
+
+
+def test_restore_listed_rejects_gz(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    sdir = tmp_path / "selfbackup"; sdir.mkdir(exist_ok=True)
+    (sdir / "app-20260101-000000.db.gz").write_bytes(b"x")
+    assert authed.post("/api/v1/self-backup/app-20260101-000000.db.gz/restore").status_code == 404
+
+
+def test_restore_listed_rejects_missing_core_tables(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    sdir = tmp_path / "selfbackup"; sdir.mkdir(exist_ok=True)
+    (sdir / "app-20260101-000000.sql").write_text("CREATE TABLE junk(x);")
+    r = authed.post("/api/v1/self-backup/app-20260101-000000.sql/restore")
+    assert r.status_code == 400
+    assert "核心表" in r.json()["detail"]
+
+
+def test_export_sql_excludes_uncommitted_writes(env):
+    """导出走 VACUUM INTO 快照:其他连接未提交的写入不可见。"""
+    import sqlite3
+
+    sb, tmp = env
+    live = tmp / "sqlite" / "app.db"
+    conn2 = sqlite3.connect(live)
+    conn2.execute("INSERT INTO t VALUES (999)")  # 不提交
+    out = sb.export_sql_dump(tmp)
+    conn2.rollback(); conn2.close()
+    assert "999" not in out.read_text()
