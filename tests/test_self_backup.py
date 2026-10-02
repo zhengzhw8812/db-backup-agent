@@ -121,3 +121,53 @@ def test_scheduler_registers_daily():
         assert "self_backup_daily" in ids
     finally:
         sched_mod.AsyncIOScheduler = orig
+
+
+def test_export_sql_creates_executable_dump(env):
+    sb, tmp = env
+    out = sb.export_sql_dump(tmp)
+    assert out.name.startswith("app-") and out.name.endswith(".sql")
+    # 在全新空库执行导出的 SQL → 数据被还原
+    import sqlite3
+    fresh = tmp / "fresh.db"
+    c = sqlite3.connect(fresh)
+    c.executescript(out.read_text())
+    n = c.execute("SELECT COUNT(*) FROM t").fetchone()[0]
+    c.close(); fresh.unlink()
+    assert n == 10
+
+
+def test_sql_rotation_independent_of_gz(env):
+    sb, tmp = env
+    sdir = tmp / "selfbackup"
+    sdir.mkdir(exist_ok=True)
+    for i in range(8):
+        (sdir / f"app-2026010{i}-000000.sql").write_text(f"-- {i}")
+        (sdir / f"app-2026010{i}-000000.db.gz").write_bytes(b"x")
+    sb.export_sql_dump(tmp)
+    sb.run_self_backup(tmp)
+    sqls = sorted(sdir.glob("app-*.sql"))
+    gzs = list(sdir.glob("app-*.db.gz"))
+    assert len(sqls) == 7, [f.name for f in sqls]  # 9 份 → 保留 7,轮转掉最旧 2
+    assert len(gzs) == 7
+
+
+def test_list_and_download_sql(env, authed, monkeypatch):
+    from app import config as app_config
+
+    sb, tmp = env
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp)
+    sb.export_sql_dump(tmp)
+    items = authed.get("/api/v1/self-backup").json()
+    assert items and items[0]["kind"] == "sql"
+    name = items[0]["name"]
+    assert authed.get(f"/api/v1/self-backup/{name}/download").status_code == 200
+
+
+def test_run_api_fmt_sql(authed):
+    # authed 已建管理员并登录;数据目录即 client fixture 的临时目录
+    r = authed.post("/api/v1/self-backup/run?fmt=sql")
+    assert r.status_code == 200
+    assert r.json()["name"].endswith(".sql")
+    r2 = authed.post("/api/v1/self-backup/run")
+    assert r2.json()["name"].endswith(".db.gz")  # 默认 gz 回归

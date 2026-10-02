@@ -10,12 +10,58 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow
 
-NAME_RE = re.compile(r"^app-\d{8}-\d{6}\.db\.gz$")  # 下载白名单(防穿越)
+NAME_RE = re.compile(r"^app-\d{8}-\d{6}\.db\.gz$")   # .db.gz 快照白名单
+SQL_RE = re.compile(r"^app-\d{8}-\d{6}\.sql$")         # .sql 导出白名单
 KEEP = 7
 
 
 def self_backup_dir(data_dir: Path) -> Path:
     return Path(data_dir) / "selfbackup"
+
+
+def export_sql_dump(data_dir: Path, keep: int = KEEP, db: Session | None = None) -> Path:
+    """导出配置库为纯文本 SQL(iterdump:建表+数据+自增序列),保留最近 keep 份。"""
+    data_dir = Path(data_dir)
+    live = data_dir / "sqlite" / "app.db"
+    sdir = self_backup_dir(data_dir)
+    sdir.mkdir(parents=True, exist_ok=True)
+
+    name = f"app-{utcnow().strftime('%Y%m%d-%H%M%S')}.sql"
+    out = sdir / name
+    try:
+        import sqlite3 as _sq
+
+        conn = _sq.connect(live)
+        try:
+            lines = list(conn.iterdump())
+        finally:
+            conn.close()
+        out.write_text("\n".join(lines) + "\n")
+    except Exception as exc:
+        try:
+            out.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if db is not None:
+            db.add(SystemLogRow(level="error", source="selfbackup",
+                                message=f"SQL 导出失败:{exc}"))
+            db.commit()
+        raise
+
+    _rotate(sdir, keep)
+    if db is not None:
+        db.add(SystemLogRow(level="info", source="selfbackup",
+                            message=f"SQL 导出完成:{name}({out.stat().st_size} 字节)"))
+        db.commit()
+    return out
+
+
+def _rotate(sdir: Path, keep: int) -> None:
+    # .db.gz 与 .sql 各自独立保留 keep 份
+    for pattern in ("app-*.db.gz", "app-*.sql"):
+        files = sorted(sdir.glob(pattern))
+        for old in files[:-keep] if len(files) > keep else []:
+            old.unlink(missing_ok=True)
 
 
 def run_self_backup(data_dir: Path, keep: int = KEEP, db: Session | None = None) -> Path:
@@ -62,23 +108,18 @@ def run_self_backup(data_dir: Path, keep: int = KEEP, db: Session | None = None)
     return out
 
 
-def _rotate(sdir: Path, keep: int) -> None:
-    files = sorted(sdir.glob("app-*.db.gz"))
-    for old in files[:-keep] if len(files) > keep else []:
-        old.unlink(missing_ok=True)
-
-
 def list_snapshots(data_dir: Path) -> list[dict]:
     sdir = self_backup_dir(data_dir)
     if not sdir.exists():
         return []
     out = []
-    for f in sorted(sdir.glob("app-*.db.gz"), reverse=True):
-        m = re.match(r"^app-(\d{8})-(\d{6})\.db\.gz$", f.name)
+    for f in sorted(sdir.glob("app-*"), reverse=True):
+        m = re.match(r"^app-(\d{8})-(\d{6})\.(db\.gz|sql)$", f.name)
         if not m:
             continue
         out.append({
             "name": f.name,
+            "kind": "sql" if m.group(3) == "sql" else "gz",
             "size": f.stat().st_size,
             "created_at": datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S").replace(tzinfo=None).isoformat(),
         })
