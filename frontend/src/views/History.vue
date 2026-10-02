@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { useBreakpoint } from '../composables/useBreakpoint'
+
+const { isMobile } = useBreakpoint()
 import { ref, h, onMounted } from 'vue'
 import { NCard, NDataTable, NButton, NSpace, NInput, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -47,7 +50,22 @@ onMounted(load)
     <template #header-extra>
       <n-input v-model:value="filter" placeholder="筛选连接名…" clearable style="width:220px" />
     </template>
+    <template v-if="isMobile">
+      <n-card v-for="r in (filter ? data.filter(x => connLabel(x.connection_id).includes(filter)) : data)" :key="r.id" class="mcard" size="small">
+        <div class="mrow"><span class="mlabel">时间</span><span>{{ new Date(r.started_at).toLocaleString() }}</span></div>
+        <div class="mrow"><span class="mlabel">连接</span><span>{{ connLabel(r.connection_id) }}</span></div>
+        <div class="mrow"><span class="mlabel">数据库</span><span>{{ r.db_name || '全部' }}</span></div>
+        <div class="mrow"><span class="mlabel">触发</span><span>{{ r.trigger === 'scheduled' ? '计划' : '手动' }}</span></div>
+        <div class="mrow"><span class="mlabel">状态</span><component :is="statusTag(r.status)" /></div>
+        <div class="mrow"><span class="mlabel">大小</span><span>{{ fmtBytes(r.size) }}</span></div>
+        <div class="mrow"><span class="mlabel">耗时</span><span>{{ fmtMs(r.duration_ms) }}</span></div>
+        <div class="mactions" v-if="r.status === 'success'">
+          <n-button size="large" @click="download(r.id)">下载</n-button>
+        </div>
+      </n-card>
+    </template>
     <n-data-table
+      v-else
       :columns="columns"
       :data="filter ? data.filter(r => connLabel(r.connection_id).includes(filter)) : data"
       :bordered="false" :pagination="{ pageSize: 15 }" />

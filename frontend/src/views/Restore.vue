@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { useBreakpoint } from '../composables/useBreakpoint'
+
+const { isMobile } = useBreakpoint()
 import { ref, h, computed, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NSelect, NSpace, NButton, NDrawer, NDrawerContent,
@@ -128,7 +131,17 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
     </n-card>
 
     <n-card title="恢复历史" :bordered="false">
+      <template v-if="!isMobile">
       <n-data-table :columns="restoreColumns" :data="restores" :bordered="false" />
+      </template>
+<template v-else>
+        <n-card v-for="r in restores" :key="r.id" class="mcard" size="small" :title="`恢复 #${r.id} → ${connLabel(r.target_connection_id)}`">
+          <div class="mrow"><span class="mlabel">源备份</span><span>#{{ r.backup_record_id }}</span></div>
+          <div class="mrow"><span class="mlabel">状态</span><component :is="statusTag(r.status)" /></div>
+          <div class="mrow"><span class="mlabel">耗时</span><span>{{ fmtMs(r.duration_ms) }}</span></div>
+          <div class="mrow" v-if="r.error"><span class="mlabel">错误</span><span>{{ r.error }}</span></div>
+        </n-card>
+      </template>
     </n-card>
   </n-space>
 
@@ -169,4 +182,11 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
 <style scoped>
 .log { margin-top: 8px; font-family: ui-monospace, monospace; font-size: 13px; max-height: 300px; overflow: auto; }
+
+<style scoped>
+.mcard { margin-bottom: 12px }
+.mrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 13px }
+.mlabel { opacity: .55; flex-shrink: 0 }
+.mactions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap }
+.mactions .n-button { flex: 1; min-height: 44px }
 </style>

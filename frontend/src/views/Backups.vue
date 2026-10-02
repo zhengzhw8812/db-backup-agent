@@ -8,6 +8,9 @@ import {
 import type { DataTableColumns } from 'naive-ui'
 import * as connApi from '../api/connections'
 import { useStatusTag } from '../composables/useStatusTag'
+import { useBreakpoint } from '../composables/useBreakpoint'
+
+const { isMobile } = useBreakpoint()
 import type { Connection } from '../api/connections'
 import * as jobsApi from '../api/jobs'
 import type { Job } from '../api/jobs'
@@ -168,11 +171,37 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
     </n-card>
 
     <n-card v-if="jobs.length" title="进行中的任务" :bordered="false">
-      <n-data-table :columns="jobColumns" :data="jobs" :bordered="false" />
+      <template v-if="!isMobile">
+        <n-data-table :columns="jobColumns" :data="jobs" :bordered="false" />
+      </template>
+      <template v-else>
+        <n-card v-for="j in jobs" :key="j.id" class="mcard" size="small" :title="`#${j.id} ${j.db_name || '全部'}`">
+          <div class="mrow"><span class="mlabel">状态</span><component :is="statusTag(j.status)" /></div>
+          <div class="mactions">
+            <n-button size="large" @click="cancel(j.id)">取消</n-button>
+          </div>
+        </n-card>
+      </template>
     </n-card>
 
     <n-card title="备份文件" :bordered="false">
-      <n-data-table :columns="fileColumns" :data="files" :bordered="false" />
+      <template v-if="!isMobile">
+        <n-data-table :columns="fileColumns" :data="files" :bordered="false" />
+      </template>
+      <template v-else>
+        <n-card v-for="r in files" :key="r.id" class="mcard" size="small">
+          <div class="mrow"><span class="mlabel">时间</span><span>{{ new Date(r.started_at).toLocaleString() }}</span></div>
+          <div class="mrow"><span class="mlabel">连接/库</span><span>{{ connLabel(r.connection_id) }} · {{ r.db_name || '全部' }}</span></div>
+          <div class="mrow"><span class="mlabel">状态</span><component :is="statusTag(r.status)" /></div>
+          <div class="mrow"><span class="mlabel">验证</span><component :is="verifyTag(r.verify_status, r.verify_error)" /></div>
+          <div class="mrow"><span class="mlabel">大小</span><span>{{ fmtBytes(r.size) }}</span></div>
+          <div class="mactions">
+            <n-button v-if="r.status === 'success'" size="large" @click="download(r.id)">下载</n-button>
+            <n-button v-if="r.status === 'success' && r.file_path" size="large" @click="verify(r.id)">验证</n-button>
+            <n-popconfirm @positive-click="remove(r.id)"><template #trigger><n-button size="large" type="error" ghost>删除</n-button></template>确认删除?</n-popconfirm>
+          </div>
+        </n-card>
+      </template>
     </n-card>
   </n-space>
 

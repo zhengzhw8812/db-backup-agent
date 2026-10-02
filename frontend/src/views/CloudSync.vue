@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { useBreakpoint } from '../composables/useBreakpoint'
+
+const { isMobile } = useBreakpoint()
 import { ref, computed, h, onMounted } from 'vue'
 import { NCard, NDataTable, NButton, NSpace, NModal, NForm, NFormItem, NInput, NSwitch, NTag, NSelect, NPopconfirm, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -95,14 +98,39 @@ onMounted(load)
       <template #header-extra>
         <n-button type="primary" @click="showDest = true">+ 添加</n-button>
       </template>
+      <template v-if="!isMobile">
       <n-data-table :columns="destCols" :data="dests" :bordered="false" />
+      </template>
+<template v-else>
+        <n-card v-for="d in dests" :key="d.id" class="mcard" :title="d.name" size="small">
+          <div class="mrow"><span class="mlabel">类型</span><span>{{ d.provider }}</span></div>
+          <div class="mrow" v-if="d.provider === 'nfs' || d.provider === 'smb'"><span class="mlabel">挂载</span>
+            <n-tag size="small" :bordered="false" :type="d.mounted ? 'success' : 'error'">{{ d.mounted ? '已挂载' : '未挂载' }}</n-tag></div>
+          <div class="mrow" v-if="d.endpoint"><span class="mlabel">Endpoint</span><span>{{ d.endpoint }}</span></div>
+          <div class="mrow" v-if="d.bucket"><span class="mlabel">桶</span><span>{{ d.bucket }}{{ d.prefix ? '/' + d.prefix : '' }}</span></div>
+          <div class="mactions">
+            <n-button size="large" @click="testDest(d.id)">{{ d.provider === 'nfs' || d.provider === 'smb' ? '探针' : '测试' }}</n-button>
+            <n-popconfirm @positive-click="rmDest(d.id)"><template #trigger><n-button size="large" type="error" ghost>删除</n-button></template>确认删除?</n-popconfirm>
+          </div>
+        </n-card>
+      </template>
     </n-card>
 
     <n-card title="同步规则(连接 → 云目标)" :bordered="false">
       <template #header-extra>
         <n-button type="primary" @click="showTarget = true">+ 添加</n-button>
       </template>
-      <n-data-table :columns="targetCols" :data="targets" :bordered="false" />
+      <template v-if="!isMobile">
+        <n-data-table :columns="targetCols" :data="targets" :bordered="false" />
+      </template>
+      <template v-else>
+        <n-card v-for="t in targets" :key="t.id" class="mcard" size="small" :title="connName(t.connection_id)">
+          <div class="mrow"><span class="mlabel">云目标</span><span>{{ destName(t.cloud_destination_id) }}</span></div>
+          <div class="mactions">
+            <n-popconfirm @positive-click="rmTarget(t.id)"><template #trigger><n-button size="large" type="error" ghost>删除</n-button></template>确认删除?</n-popconfirm>
+          </div>
+        </n-card>
+      </template>
     </n-card>
 
     <n-card title="手动同步" :bordered="false">

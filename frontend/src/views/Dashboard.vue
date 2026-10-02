@@ -68,7 +68,7 @@ onMounted(load)
 <template>
   
   <PageHeader title="仪表盘" description="备份任务与存储概览" /><n-spin :show="loading">
-    <n-grid :cols="4" :x-gap="16" :y-gap="16">
+    <n-grid cols="2 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16">
       <n-grid-item>
         <n-card :bordered="false">
           <n-statistic label="备份总数" :value="stats?.total ?? 0" />

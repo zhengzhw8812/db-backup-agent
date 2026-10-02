@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { useBreakpoint } from '../composables/useBreakpoint'
+
+const { isMobile } = useBreakpoint()
 import { ref, h, onMounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
@@ -82,7 +85,21 @@ onMounted(load)
   
   <PageHeader title="备份计划" description="定时自动备份策略" /><n-card title="备份计划" :bordered="false">
     <template #header-extra><n-button type="primary" @click="openAdd">+ 新增计划</n-button></template>
-    <n-data-table :columns="columns" :data="data" :loading="loading" :bordered="false" />
+    <template v-if="!isMobile">
+      <n-data-table :columns="columns" :data="data" :loading="loading" :bordered="false" />
+      </template>
+<template v-else>
+        <n-card v-for="s in data" :key="s.id" class="mcard" :title="connLabel(s.connection_id)" size="small">
+          <div class="mrow"><span class="mlabel">Cron</span><n-tag size="small" :bordered="false">{{ s.cron_expr }}</n-tag></div>
+          <div class="mrow"><span class="mlabel">保留</span><span>{{ s.retention_days }} 天</span></div>
+          <div class="mrow"><span class="mlabel">下次运行</span><span>{{ s.next_run_at ? new Date(s.next_run_at).toLocaleString() : '—' }}</span></div>
+          <div class="mrow"><span class="mlabel">启用</span><n-switch :value="s.enabled" @update:value="(v: boolean) => toggle(s, v)" /></div>
+          <div class="mactions">
+            <n-button size="large" @click="openEdit(s)">编辑</n-button>
+            <n-popconfirm @positive-click="remove(s.id)"><template #trigger><n-button size="large" type="error" ghost>删除</n-button></template>确认删除?</n-popconfirm>
+          </div>
+        </n-card>
+      </template>
   </n-card>
 
   <n-modal v-model:show="show" preset="card" :title="editing ? '编辑计划' : '新增计划'" style="width:480px">

@@ -11,6 +11,7 @@ export interface CloudDestination {
   secure: boolean
   enabled: boolean
   created_at: string
+  mounted: boolean | null
 }
 export interface SyncTarget {
   id: number
