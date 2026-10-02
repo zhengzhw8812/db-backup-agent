@@ -171,3 +171,93 @@ def test_run_api_fmt_sql(authed):
     assert r.json()["name"].endswith(".sql")
     r2 = authed.post("/api/v1/self-backup/run")
     assert r2.json()["name"].endswith(".db.gz")  # 默认 gz 回归
+
+
+CORE_TABLES_OK = """
+CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT);
+CREATE TABLE db_connections (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE backup_records (id INTEGER PRIMARY KEY, status TEXT);
+CREATE TABLE schedules (id INTEGER PRIMARY KEY, cron_expr TEXT);
+CREATE TABLE notification_config (id INTEGER PRIMARY KEY);
+INSERT INTO accounts VALUES (1, 'admin');
+INSERT INTO db_connections VALUES (1, 'nas');
+"""
+
+
+def _live_db_with_marker(tmp_path, marker: str):
+    from app import config as app_config
+
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    live = tmp_path / "sqlite" / "app.db"
+    c = sqlite3.connect(live)
+    c.execute("CREATE TABLE t(x)")
+    c.commit(); c.close()
+    (tmp_path / "sqlite" / ".restore-pending.sql").write_text(marker)
+    return live
+
+
+def test_stage_restore_rejects_script_without_core_tables(env):
+    sb, tmp = env
+    with pytest.raises(ValueError) as ei:
+        sb.stage_restore(tmp, "CREATE TABLE junk(x); INSERT INTO junk VALUES (1);")
+    assert "核心表" in str(ei.value)
+    assert not (tmp / "sqlite" / ".restore-pending.sql").exists()  # 校验失败不落暂存
+
+
+def test_stage_restore_accepts_valid_script(tmp_path):
+    from app import config as app_config
+
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    live = tmp_path / "sqlite" / "app.db"
+    live.write_bytes(b"old")
+    from app.services import self_backup as sb
+
+    staged = sb.stage_restore(tmp_path, CORE_TABLES_OK)
+    assert staged == tmp_path / "sqlite" / ".restore-pending.sql"
+    assert "CREATE TABLE accounts" in staged.read_text()
+
+
+def test_maybe_restore_applies_and_archives(tmp_path):
+    from app import config as app_config
+
+    live = _live_db_with_marker(tmp_path, CORE_TABLES_OK)
+    from app.services import self_backup as sb
+
+    info = sb.maybe_restore(tmp_path)
+    assert info and "app.db" in str(info)
+    c = sqlite3.connect(live)
+    tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    users = c.execute("SELECT username FROM accounts").fetchall()
+    c.close()
+    assert "db_connections" in tables and users == [("admin",)]
+    assert not (tmp_path / "sqlite" / ".restore-pending.sql").exists()
+    # pre-restore 留底生成
+    sb_dir = tmp_path / "selfbackup"
+    assert any(f.name.startswith("pre-restore-") for f in sb_dir.iterdir())
+
+
+def test_maybe_restore_noop_without_marker(tmp_path):
+    from app.services import self_backup as sb
+
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    assert sb.maybe_restore(tmp_path) is None
+
+
+def test_upload_import_stages(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    (tmp_path / "sqlite").mkdir(exist_ok=True)
+    r = authed.post("/api/v1/self-backup/import",
+                    files={"file": ("dump.sql", CORE_TABLES_OK.encode(), "application/sql")})
+    assert r.status_code == 200
+    assert r.json()["staged"] is True
+
+
+def test_upload_import_rejects_garbage(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    r = authed.post("/api/v1/self-backup/import",
+                    files={"file": ("junk.sql", b"DROP TABLE x;", "application/sql")})
+    assert r.status_code == 400

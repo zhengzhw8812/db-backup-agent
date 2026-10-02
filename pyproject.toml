@@ -15,6 +15,7 @@ dependencies = [
     "arq>=0.26",
     "cryptography>=42.0",
     "itsdangerous>=2.1",
+    "python-multipart>=0.0.9",
     "pydantic-settings>=2.2",
     "redis>=5.0",
     "minio>=7.2",
