@@ -174,12 +174,12 @@ def test_run_api_fmt_sql(authed):
 
 
 CORE_TABLES_OK = """
-CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT);
+CREATE TABLE account (id INTEGER PRIMARY KEY, username TEXT);
 CREATE TABLE db_connections (id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE backup_records (id INTEGER PRIMARY KEY, status TEXT);
 CREATE TABLE schedules (id INTEGER PRIMARY KEY, cron_expr TEXT);
 CREATE TABLE notification_config (id INTEGER PRIMARY KEY);
-INSERT INTO accounts VALUES (1, 'admin');
+INSERT INTO account VALUES (1, 'admin');
 INSERT INTO db_connections VALUES (1, 'nas');
 """
 
@@ -214,7 +214,7 @@ def test_stage_restore_accepts_valid_script(tmp_path):
 
     staged = sb.stage_restore(tmp_path, CORE_TABLES_OK)
     assert staged == tmp_path / "sqlite" / ".restore-pending.sql"
-    assert "CREATE TABLE accounts" in staged.read_text()
+    assert "CREATE TABLE account " in staged.read_text()
 
 
 def test_maybe_restore_applies_and_archives(tmp_path):
@@ -227,7 +227,7 @@ def test_maybe_restore_applies_and_archives(tmp_path):
     assert info and "app.db" in str(info)
     c = sqlite3.connect(live)
     tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    users = c.execute("SELECT username FROM accounts").fetchall()
+    users = c.execute("SELECT username FROM account").fetchall()
     c.close()
     assert "db_connections" in tables and users == [("admin",)]
     assert not (tmp_path / "sqlite" / ".restore-pending.sql").exists()

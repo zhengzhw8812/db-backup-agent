@@ -109,7 +109,7 @@ def run_self_backup(data_dir: Path, keep: int = KEEP, db: Session | None = None)
     return out
 
 
-CORE_TABLES = ("accounts", "db_connections", "backup_records", "schedules", "notification_config")
+CORE_TABLES = ("account", "db_connections", "backup_records", "schedules", "notification_config")
 PENDING = "sqlite/.restore-pending.sql"
 
 

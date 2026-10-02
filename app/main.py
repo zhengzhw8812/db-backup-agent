@@ -38,6 +38,20 @@ async def lifespan(app: FastAPI):
     if settings.scheduler_enabled:
         await sched.start()
     app.state.scheduler = sched  # 始终存在,便于 CRUD(scheduler_enabled=False 时仅不入队触发)
+    if getattr(app.state, "restore_info", None):
+        # SQL 导入还原已在引擎初始化前完成,这里补记审计日志
+        try:
+            db3 = next(get_db())
+            try:
+                from app.db.models import SystemLog
+
+                db3.add(SystemLog(level="warning", source="selfbackup",
+                                  message=f"已从 SQL 导入恢复配置库:{app.state.restore_info}"))
+                db3.commit()
+            finally:
+                db3.close()
+        except Exception:
+            pass
     try:
         yield
     finally:
@@ -47,6 +61,10 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     (settings.data_dir / "sqlite").mkdir(parents=True, exist_ok=True)
+    # SQL 导入还原(重启生效):必须在引擎初始化/任何连接之前执行
+    from app.services.self_backup import maybe_restore
+
+    restore_info = maybe_restore(settings.data_dir)
     secret_key, fernet_key = bootstrap_keys()
 
     init_engine(settings.sqlite_url)
@@ -70,6 +88,7 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax", https_only=settings.cookie_secure)
     app.state.crypto = Crypto(fernet_key.encode("ascii"))
+    app.state.restore_info = restore_info
     app.state.arq = None
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
