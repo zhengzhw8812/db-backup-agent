@@ -1,8 +1,36 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NList, NListItem, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
+import { NCard, NPopconfirm, NList, NListItem, NText, NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
 import * as setApi from '../api/settings'
 import * as sbApi from '../api/self-backup'
+
+const importFile = ref<File | null>(null)
+const restoring = ref('')
+
+function pickImport(e: Event) {
+  const t = e.target as HTMLInputElement
+  importFile.value = t.files?.[0] ?? null
+}
+
+async function importSql() {
+  if (!importFile.value) { msg.warning('先选择 .sql 文件'); return }
+  const fd = new FormData()
+  fd.append('file', importFile.value)
+  try {
+    await sbApi.importSql(fd)
+    msg.success('已暂存,重启容器后生效')
+    importFile.value = null
+  } catch (e: any) { msg.error(e.response?.data?.detail || '导入失败') }
+}
+
+async function restoreListed(name: string) {
+  restoring.value = name
+  try {
+    await sbApi.restoreListed(name)
+    msg.success('已暂存,重启容器后生效')
+  } catch (e: any) { msg.error(e.response?.data?.detail || '还原失败') }
+  finally { restoring.value = '' }
+}
 import type { NotificationSettings } from '../api/settings'
 
 const msg = useMessage()
@@ -57,7 +85,7 @@ async function saveVerify() {
   }
 }
 
-const snaps = ref<Array<{ name: string; size: number; created_at: string }>>([])
+const snaps = ref<Array<{ name: string; kind: 'gz' | 'sql'; size: number; created_at: string }>>([])
 const fmtSize = (n: number) => n < 1024 ? `${n}B` : n < 1048576 ? `${(n/1024).toFixed(1)}KB` : `${(n/1048576).toFixed(1)}MB`
 
 async function loadSnaps() {
@@ -148,13 +176,23 @@ onMounted(() => { load(); loadVerify(); loadSnaps() })
       <n-space vertical :size="8">
         <n-space align="center">
           <n-button type="primary" @click="runSelfBackupNow">立即备份</n-button>
+          <n-button @click="() => (importFile ? importSql() : undefined)" :disabled="!importFile">导入 SQL 还原</n-button>
+          <input type="file" accept=".sql" @change="pickImport" />
           <n-text depth="3">每日 04:00 自动备份配置库(VACUUM INTO 一致性快照),保留最近 7 份。恢复:下载快照后停容器、覆盖 data/sqlite/app.db、再启动。</n-text>
         </n-space>
         <n-list v-if="snaps.length" bordered>
           <n-list-item v-for="s in snaps" :key="s.name">
             <n-space justify="space-between" style="width: 100%">
               <span>{{ s.name }}({{ fmtSize(s.size) }})</span>
-              <n-button size="small" tag="a" :href="sbApi.downloadUrl(s.name)" target="_blank">下载</n-button>
+              <n-space>
+                <n-popconfirm v-if="s.kind === 'sql'" @positive-click="restoreListed(s.name)">
+                  <template #trigger>
+                    <n-button size="small" type="warning" :loading="restoring === s.name">还原</n-button>
+                  </template>
+                  将覆盖当前配置库,重启容器后生效,并自动留底当前配置。确认?
+                </n-popconfirm>
+                <n-button size="small" tag="a" :href="sbApi.downloadUrl(s.name)" target="_blank">下载</n-button>
+              </n-space>
             </n-space>
           </n-list-item>
         </n-list>
