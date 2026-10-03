@@ -210,7 +210,7 @@ def test_list_databases_pre_save_success(authed, monkeypatch):
     r = authed.post("/api/v1/connections/list-databases",
                     json={"type": "pg", "host": "h", "port": 5432, "username": "u", "password": "p"})
     assert r.status_code == 200
-    assert r.json() == {"databases": ["app", "logs"]}
+    assert r.json() == {"databases": ["app", "logs"], "has_backup_permission": True}
 
 
 def test_list_databases_pre_save_failure_returns_400(authed, monkeypatch):
@@ -237,4 +237,4 @@ def test_list_databases_post_save_success(authed, monkeypatch):
     monkeypatch.setattr("app.services.connection_service.get_adapter", lambda t: FakeAdapter())
     r = authed.post(f"/api/v1/connections/{cid}/databases")
     assert r.status_code == 200
-    assert r.json() == {"databases": ["app"]}
+    assert r.json() == {"databases": ["app"], "has_backup_permission": True}

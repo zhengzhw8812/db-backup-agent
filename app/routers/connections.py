@@ -73,7 +73,7 @@ def list_databases_pre(payload: ConnectionProbe, request: Request, _=Depends(get
         dbs = svc.list_databases_for_payload(payload)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"databases": dbs}
+    return dbs
 
 
 @router.post("/{conn_id}/databases")
@@ -82,4 +82,4 @@ def list_databases_post(conn_id: int, request: Request, db: Session = Depends(ge
         dbs = svc.list_databases_for_connection(db, request.app.state.crypto, conn_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"databases": dbs}
+    return dbs

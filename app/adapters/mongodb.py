@@ -1,7 +1,20 @@
 from __future__ import annotations
 from typing import Callable
 
+import json
+
 from app.adapters.base import ConnectionInfo, register_adapter, run_subprocess
+
+
+def _parse_list_output(raw: str) -> list[str]:
+    """解析 mongosh listDatabases 的 JSON 输出(容忍首尾 shell 提示行)。"""
+    text = raw.strip()
+    start = text.find("{")
+    if start < 0:
+        raise RuntimeError(f"mongosh 输出无法解析: {text[:120]}")
+    doc = json.JSONDecoder().raw_decode(text[start:])
+    return [d["name"] for d in doc[0].get("databases", []) if d.get("name")]
+
 
 
 class MongoAdapter:
@@ -52,6 +65,22 @@ class MongoAdapter:
     def test(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> None:
         # mongotool 无轻量 ping 命令,mongodump 探测过重;暂不支持自动测试
         raise NotImplementedError("MongoDB 暂不支持连接测试,请新建后直接尝试备份")
+
+
+    def list_databases(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> list[str]:
+        """列出该账号有权限的库:authorizedDatabases=true 由服务端按角色过滤。
+        需要镜像内安装 mongosh(与 mongodump 同族)。"""
+        cmd = ["mongosh", "--quiet"]
+        if info.host:
+            cmd += ["--host", info.host]
+        if info.port:
+            cmd += ["--port", str(info.port)]
+        if info.username:
+            cmd += ["-u", info.username, "-p", info.password or ""]
+        cmd += ["--eval",
+                "JSON.stringify(db.adminCommand({listDatabases: 1, authorizedDatabases: true}))"]
+        out = run_subprocess_capture(cmd, timeout=15, is_cancelled=is_cancelled)
+        return _parse_list_output(out)
 
 
 register_adapter(MongoAdapter())

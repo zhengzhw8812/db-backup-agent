@@ -63,10 +63,11 @@ class PostgresAdapter:
         run_subprocess(cmd, env=self.env(info), timeout=10, is_cancelled=is_cancelled)
 
     def list_databases(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> list[str]:
-        """列出该用户可连接的非模板库:连维护库 postgres(失败回退 template1)→
-        SELECT datname FROM pg_database WHERE datistemplate=false AND datallowconn。
-        密码仅走 PGPASSWORD env。"""
-        sql = "SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn ORDER BY 1"
+        """列出该账号有备份权限(CONNECT)的非模板库:连维护库 postgres(失败回退
+        template1)→ pg_database + has_database_privilege 过滤。密码仅走 PGPASSWORD env。"""
+        # 备份权限语义:账号对该库有 CONNECT 且可读(has_database_privilege 过滤不可连的库)
+        sql = ("SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn "
+               "AND has_database_privilege(current_user, datname, 'CONNECT') ORDER BY 1")
         last_err: Exception | None = None
         for maint in ("postgres", "template1"):
             cmd = ["psql", "--no-password", "-t", "-A"]  # -t 去表头, -A 不对齐

@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import Callable
 
-from app.adapters.base import ConnectionInfo, register_adapter, run_subprocess
+from app.adapters.base import ConnectionInfo, register_adapter, run_subprocess, run_subprocess_capture
 
 
 class MysqlAdapter:
@@ -84,6 +84,28 @@ class MysqlAdapter:
                 cmd += [info.db_name]
             cmd += ["-e", "select 1"]
             run_subprocess(cmd, timeout=10, is_cancelled=is_cancelled)
+        finally:
+            try:
+                os.unlink(defaults_file)
+            except OSError:
+                pass
+
+
+    _SYSTEM_DBS = {"information_schema", "performance_schema", "sys", "mysql"}
+
+    def list_databases(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> list[str]:
+        """列出该账号有 SELECT 权限的库:SHOW DATABASES 由 MySQL 按权限过滤,
+        再剔除系统库。密码走 defaults-extra-file,不上 argv。"""
+        defaults_file = self._write_defaults(info)
+        try:
+            cmd = ["mysql", f"--defaults-extra-file={defaults_file}", "-B", "-e", "SHOW DATABASES"]
+            if info.host:
+                cmd[2:2] = [f"-h{info.host}"]
+            if info.port:
+                cmd[2:2] = [f"-P{info.port}"]
+            out = run_subprocess_capture(cmd, timeout=10, is_cancelled=is_cancelled)
+            return [ln.strip() for ln in out.splitlines()
+                    if ln.strip() and ln.strip() not in self._SYSTEM_DBS]
         finally:
             try:
                 os.unlink(defaults_file)

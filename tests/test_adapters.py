@@ -423,3 +423,77 @@ def test_mysql_argv_keeps_single_db_when_dbname():
     cmd = a.argv(ConnectionInfo(type="mysql", db_name="shop"), "/tmp/x.cnf")
     assert "shop" in cmd
     assert "--all-databases" not in cmd
+
+
+def test_pg_list_databases_filters_by_connect_privilege(monkeypatch):
+    """PG 列库 SQL 必须按 CONNECT 权限过滤(has_database_privilege)。"""
+    import app.adapters.postgres as pgmod
+
+    captured = {}
+
+    def fake_capture(argv, **kw):
+        captured["sql"] = argv[argv.index("-c") + 1]
+        return "mydb\notherdb\n"
+
+    monkeypatch.setattr(pgmod, "run_subprocess_capture", fake_capture)
+    from app.adapters.base import ConnectionInfo
+    from app.adapters.postgres import PostgresAdapter
+
+    out = PostgresAdapter().list_databases(ConnectionInfo(type="pg", host="h", username="u"))
+    assert out == ["mydb", "otherdb"]
+    assert "has_database_privilege" in captured["sql"]
+    assert "datistemplate" in captured["sql"]
+
+
+def test_mysql_list_databases_filters_system_schemas(monkeypatch):
+    """MySQL:SHOW DATABASES 结果剔除系统库。"""
+    import app.adapters.mysql as mymod
+
+    class FakeAdapter:
+        pass
+
+    def fake_capture(argv, **kw):
+        return "information_schema\nmydb\nmysql\nperformance_schema\nsys\nappdb\n"
+
+    monkeypatch.setattr(mymod, "run_subprocess_capture", fake_capture)
+    from app.adapters.base import ConnectionInfo
+    from app.adapters.mysql import MysqlAdapter
+
+    out = MysqlAdapter().list_databases(ConnectionInfo(type="mysql", host="h", username="u"))
+    assert out == ["mydb", "appdb"]
+
+
+def test_mongo_list_databases_parses_authorized():
+    """Mongo:mongosh listDatabases authorizedDatabases 输出解析。"""
+    from app.adapters.mongodb import _parse_list_output
+
+    assert _parse_list_output('{"databases":[{"name":"app"},{"name":"logs"}],"totalSize":1}') == ["app", "logs"]
+    # 容忍尾随 shell 提示行
+    assert _parse_list_output('{"databases":[{"name":"a"}]}\n DeprecationWarning...') == ["a"]
+
+
+def test_service_has_backup_permission_flag(tmp_path, monkeypatch):
+    """服务层:列表非空 → has_backup_permission=True;空 → False。"""
+    from app import config as app_config
+    import tempfile
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tempfile.mkdtemp())
+    from app.db.session import init_engine, create_all
+    from app.db import session as _session
+    import app.db.models  # noqa
+    from app.services import connection_service as svc
+
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    db = _session._SessionLocal()
+    from app.db.models import DbConnection
+
+    conn = DbConnection(name="受限", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+
+    monkeypatch.setattr(svc, "get_adapter",
+                        lambda t: type("A", (), {"list_databases": lambda self, info, **kw: []})())
+    result = svc.list_databases_for_connection(db, __import__("app.core.crypto", fromlist=["Crypto"]).Crypto(b"x" * 43 + b"="), conn.id)
+    db.close()
+    # 返回结构:(databases, has_permission) 或 dict —— 按实现断言
+    assert result["databases"] == [] and result["has_backup_permission"] is False
