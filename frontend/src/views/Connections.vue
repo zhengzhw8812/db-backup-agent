@@ -61,6 +61,11 @@ const typeOptions = [
   { label: 'SQLite', value: 'sqlite' },
 ]
 
+function selectAllDbs() {
+  // 一键全选:把检测结果全部勾上
+  form.value.db_names = dbOptions.value.map(o => o.value)
+}
+
 let detectTimer: number | undefined
 
 function tryAutoDetect() {
@@ -186,6 +191,7 @@ onMounted(load)
                 style="width: 260px"
               />
               <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
           <template v-else-if="form.type === 'mysql'">
@@ -200,6 +206,7 @@ onMounted(load)
                 style="width: 260px"
               />
               <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
           <template v-else-if="form.type === 'mongo'">
@@ -214,6 +221,7 @@ onMounted(load)
                 style="width: 260px"
               />
               <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
           <template v-else>
