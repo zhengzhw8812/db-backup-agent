@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import EmptyState from '../components/EmptyState.vue'
 import { ref, h, onMounted } from 'vue'
 import { NCard, NDataTable, NTag, NButton, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -43,6 +44,7 @@ onMounted(load)
         <n-button size="small" @click="load">刷新</n-button>
       </n-space>
     </template>
-    <n-data-table :columns="columns" :data="data" :bordered="false" :pagination="{ pageSize: 20 }" />
+    <n-data-table v-if="data.length" :columns="columns" :data="data" :bordered="false" :pagination="{ pageSize: 20 }" />
+        <EmptyState v-else icon="📋" text="暂无日志" />
   </n-card>
 </template>

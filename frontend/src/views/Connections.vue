@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
 import { useBreakpoint } from '../composables/useBreakpoint'
+import EmptyState from '../components/EmptyState.vue'
+import DbTypeTag from '../components/DbTypeTag.vue'
 
 const { isMobile } = useBreakpoint()
 import { ref, h, onMounted } from 'vue'
@@ -123,7 +125,7 @@ async function remove(id: number) {
 
 const columns: DataTableColumns<Connection> = [
   { title: '名称', key: 'name' },
-  { title: '类型', key: 'type' },
+  { title: '类型', key: 'type', render: (row: any) => h(DbTypeTag, { type: row.type }) },
   { title: '主机', key: 'host' },
   { title: '端口', key: 'port' },
   { title: '数据库', key: 'db_names', render: row => (row.db_names && row.db_names.length) ? row.db_names.join(', ') : (row.db_name || (row.type === 'mysql' ? '全部' : '—')) },
@@ -154,11 +156,12 @@ onMounted(load)
       <n-button type="primary" @click="openAdd">+ 新增连接</n-button>
     </template>
     <template v-if="!isMobile">
-      <n-data-table :columns="columns" :data="data" :loading="loading" :bordered="false" />
+      <n-data-table v-if="data.length" :columns="columns" :data="data" :loading="loading" :bordered="false" size="small" striped />
+        <EmptyState v-else-if="!loading" icon="🔌" text="还没有数据库连接" action-text="+ 新增连接" @action="openAdd()" />
       </template>
 <template v-else>
         <n-card v-for="c in data" :key="c.id" class="mcard" :title="c.name" size="small">
-          <div class="mrow"><span class="mlabel">类型</span><span>{{ c.type }}</span></div>
+          <div class="mrow"><span class="mlabel">类型</span><DbTypeTag :type="c.type" /></div>
           <div class="mrow"><span class="mlabel">主机</span><span>{{ c.host || '—' }}{{ c.port ? ':' + c.port : '' }}</span></div>
           <div class="mrow"><span class="mlabel">数据库</span><span>{{ (c.db_names && c.db_names.length) ? c.db_names.join(', ') : (c.db_name || (c.type === 'mysql' ? '全部' : '—')) }}</span></div>
           <div class="mrow"><span class="mlabel">用户</span><span>{{ c.username || '—' }}</span></div>

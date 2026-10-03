@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import EmptyState from '../components/EmptyState.vue'
 import { useBreakpoint } from '../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
@@ -137,7 +138,8 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
     <n-card title="恢复历史" :bordered="false">
       <template v-if="!isMobile">
-      <n-data-table :columns="restoreColumns" :data="restores" :bordered="false" />
+      <n-data-table v-if="restores.length" :columns="restoreColumns" :data="restores" :bordered="false" />
+        <EmptyState v-else icon="♻️" text="还没有恢复记录" />
       </template>
 <template v-else>
         <n-card v-for="r in restores" :key="r.id" class="mcard" size="small" :title="`恢复 #${r.id} → ${connLabel(r.target_connection_id)}`">

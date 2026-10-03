@@ -8,6 +8,8 @@ import {
 import type { DataTableColumns } from 'naive-ui'
 import * as connApi from '../api/connections'
 import { useStatusTag } from '../composables/useStatusTag'
+import { relativeTime, fullTime } from '../composables/useRelativeTime'
+import EmptyState from '../components/EmptyState.vue'
 import { useBreakpoint } from '../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
@@ -125,7 +127,7 @@ const jobColumns: DataTableColumns<Job> = [
   },
 ]
 const fileColumns: DataTableColumns<BackupFile> = [
-  { title: '时间', key: 'started_at', render: r => new Date(r.started_at).toLocaleString() },
+  { title: '时间', key: 'started_at', render: r => h('span', { title: fullTime(r.started_at) }, relativeTime(r.started_at)) },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: '库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '状态', key: 'status', render: r => statusTag(r.status) },
@@ -172,7 +174,8 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
     <n-card v-if="jobs.length" title="进行中的任务" :bordered="false">
       <template v-if="!isMobile">
-        <n-data-table :columns="jobColumns" :data="jobs" :bordered="false" />
+        <n-data-table v-if="jobs.length" :columns="jobColumns" :data="jobs" :bordered="false" size="small" striped />
+        <EmptyState v-else icon="⏳" text="当前没有进行中的任务" />
       </template>
       <template v-else>
         <n-card v-for="j in jobs" :key="j.id" class="mcard" size="small" :title="`#${j.id} ${j.db_name || '全部'}`">
@@ -186,11 +189,12 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
     <n-card title="备份文件" :bordered="false">
       <template v-if="!isMobile">
-        <n-data-table :columns="fileColumns" :data="files" :bordered="false" />
+        <n-data-table v-if="files.length" :columns="fileColumns" :data="files" :bordered="false" size="small" striped />
+        <EmptyState v-else icon="💾" text="还没有备份" action-text="立即备份" @action="() => runNow()" />
       </template>
       <template v-else>
         <n-card v-for="r in files" :key="r.id" class="mcard" size="small">
-          <div class="mrow"><span class="mlabel">时间</span><span>{{ new Date(r.started_at).toLocaleString() }}</span></div>
+          <div class="mrow"><span class="mlabel">时间</span><span :title="fullTime(r.started_at)">{{ relativeTime(r.started_at) }}</span></div>
           <div class="mrow"><span class="mlabel">连接/库</span><span>{{ connLabel(r.connection_id) }} · {{ r.db_name || '全部' }}</span></div>
           <div class="mrow"><span class="mlabel">状态</span><component :is="statusTag(r.status)" /></div>
           <div class="mrow"><span class="mlabel">验证</span><component :is="verifyTag(r.verify_status, r.verify_error)" /></div>

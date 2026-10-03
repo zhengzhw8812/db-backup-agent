@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
 import { useBreakpoint } from '../composables/useBreakpoint'
+import EmptyState from '../components/EmptyState.vue'
 
 const { isMobile } = useBreakpoint()
 import { ref, computed, h, onMounted } from 'vue'
@@ -99,7 +100,8 @@ onMounted(load)
         <n-button type="primary" @click="showDest = true">+ 添加</n-button>
       </template>
       <template v-if="!isMobile">
-      <n-data-table :columns="destCols" :data="dests" :bordered="false" />
+      <n-data-table v-if="dests.length" :columns="destCols" :data="dests" :bordered="false" size="small" striped />
+          <EmptyState v-else icon="☁️" text="还没有云存储目的地" action-text="+ 新增目的地" @action="showDest = true" />
       </template>
 <template v-else>
         <n-card v-for="d in dests" :key="d.id" class="mcard" :title="d.name" size="small">
@@ -121,7 +123,8 @@ onMounted(load)
         <n-button type="primary" @click="showTarget = true">+ 添加</n-button>
       </template>
       <template v-if="!isMobile">
-        <n-data-table :columns="targetCols" :data="targets" :bordered="false" />
+        <n-data-table v-if="targets.length" :columns="targetCols" :data="targets" :bordered="false" size="small" striped />
+          <EmptyState v-else icon="🔗" text="还没有同步规则" action-text="+ 新增规则" @action="showTarget = true" />
       </template>
       <template v-else>
         <n-card v-for="t in targets" :key="t.id" class="mcard" size="small" :title="connName(t.connection_id)">

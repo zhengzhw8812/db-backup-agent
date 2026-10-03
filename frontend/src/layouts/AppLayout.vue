@@ -12,6 +12,11 @@ const router = useRouter()
 const { dark, toggle } = useTheme()
 const { isMobile } = useBreakpoint()
 
+const PAGE_ICONS: Record<string, string> = {
+  dashboard: '📊', connections: '🔌', schedules: '⏰', backups: '💾',
+  restore: '♻️', cloud: '☁️', history: '📜', settings: '⚙️', logs: '📋',
+}
+
 const MENU = [
   { label: '📊 仪表盘', key: 'dashboard' },
   { label: '🔌 数据库连接', key: 'connections' },
@@ -61,6 +66,7 @@ async function logout() { await auth.doLogout(); router.push('/login') }
         :value="activeKey"
         @update:value="onSelect"
       />
+      <div class="sider-version">v3.2.0</div>
     </n-layout-sider>
 
     <!-- 移动抽屉侧栏 -->
@@ -78,7 +84,7 @@ async function logout() { await auth.doLogout(); router.push('/login') }
             <template #icon><span class="hamburger">☰</span></template>
           </n-button>
           <span v-if="isMobile" class="brand">DB Backup</span>
-          <span v-else class="page-title">{{ MENU.find(m => m.key === activeKey)?.label?.slice(3) || '' }}</span>
+          <span v-else class="page-title">{{ PAGE_ICONS[activeKey] || '' }} {{ MENU.find(m => m.key === activeKey)?.label?.slice(3) || '' }}</span>
         </div>
         <n-space align="center" :size="8">
           <n-button quaternary size="small" @click="toggle">{{ dark ? '🌞' : '🌙' }}</n-button>
@@ -104,6 +110,7 @@ async function logout() { await auth.doLogout(); router.push('/login') }
 .page-title { font-weight: 600; font-size: 15px }
 .username { opacity: .7; font-size: 13px }
 .hamburger { font-size: 18px }
+.sider-version { opacity: .4; font-size: 11px; text-align: center; padding: 10px 0 2px }
 @media (max-width: 767px) {
   .topbar :deep(.n-button) { min-height: 44px }
 }

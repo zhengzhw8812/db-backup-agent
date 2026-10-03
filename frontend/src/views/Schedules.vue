@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { relativeTime, fullTime } from '../composables/useRelativeTime'
+import EmptyState from '../components/EmptyState.vue'
 import { useBreakpoint } from '../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
@@ -65,7 +67,7 @@ const columns: DataTableColumns<Schedule> = [
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: 'Cron 表达式', key: 'cron_expr', render: r => h(NTag, { size: 'small', bordered: false }, { default: () => r.cron_expr }) },
   { title: '保留(天)', key: 'retention_days' },
-  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? new Date(r.next_run_at).toLocaleString() : '—' },
+  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? h('span', { title: fullTime(r.next_run_at) }, relativeTime(r.next_run_at)) : '—' },
   { title: '启用', key: 'enabled', render: r => h(NSwitch, { value: r.enabled, 'onUpdate:value': (v: boolean) => toggle(r, v) }) },
   { title: '操作', key: 'actions', render: r => h(NSpace, null, {
       default: () => [
@@ -86,7 +88,8 @@ onMounted(load)
   <PageHeader title="备份计划" description="定时自动备份策略" /><n-card title="备份计划" :bordered="false">
     <template #header-extra><n-button type="primary" @click="openAdd">+ 新增计划</n-button></template>
     <template v-if="!isMobile">
-      <n-data-table :columns="columns" :data="data" :loading="loading" :bordered="false" />
+      <n-data-table v-if="data.length" :columns="columns" :data="data" :loading="loading" :bordered="false" size="small" striped />
+        <EmptyState v-else-if="!loading" icon="⏰" text="还没有备份计划" action-text="+ 新建计划" @action="openAdd()" />
       </template>
 <template v-else>
         <n-card v-for="s in data" :key="s.id" class="mcard" :title="connLabel(s.connection_id)" size="small">

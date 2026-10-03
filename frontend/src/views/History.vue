@@ -8,6 +8,9 @@ import { NCard, NDataTable, NButton, NSpace, NInput, useMessage } from 'naive-ui
 import type { DataTableColumns } from 'naive-ui'
 import * as bkApi from '../api/backups'
 import { useStatusTag } from '../composables/useStatusTag'
+import DbTypeTag from '../components/DbTypeTag.vue'
+import EmptyState from '../components/EmptyState.vue'
+import { relativeTime, fullTime } from '../composables/useRelativeTime'
 import type { BackupFile } from '../api/backups'
 import * as connApi from '../api/connections'
 import type { Connection } from '../api/connections'
@@ -30,7 +33,7 @@ const fmtBytes = (n?: number | null) => { if (!n) return '—'; const u = ['B','
 const statusTag = useStatusTag()
 
 const columns: DataTableColumns<BackupFile> = [
-  { title: '时间', key: 'started_at', render: r => new Date(r.started_at).toLocaleString() },
+  { title: '时间', key: 'started_at', render: r => h('span', { title: fullTime(r.started_at) }, relativeTime(r.started_at)) },
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: '数据库', key: 'db_name', render: r => r.db_name || '全部' },
   { title: '触发', key: 'trigger', render: r => r.trigger === 'scheduled' ? '计划' : '手动' },
@@ -64,7 +67,7 @@ onMounted(load)
         </div>
       </n-card>
     </template>
-    <n-data-table
+    <n-data-table size="small" striped
       v-else
       :columns="columns"
       :data="filter ? data.filter(r => connLabel(r.connection_id).includes(filter)) : data"

@@ -67,7 +67,12 @@ onMounted(load)
 
 <template>
   
-  <PageHeader title="仪表盘" description="备份任务与存储概览" /><n-spin :show="loading">
+  <PageHeader title="仪表盘" description="备份任务与存储概览">
+  <n-space>
+    <n-button type="primary" @click="$router.push('/backups')">💾 立即备份</n-button>
+    <n-button @click="$router.push('/connections')">🔌 新增连接</n-button>
+  </n-space>
+</PageHeader><n-spin :show="loading">
     <n-grid cols="2 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16">
       <n-grid-item>
         <n-card :bordered="false">
