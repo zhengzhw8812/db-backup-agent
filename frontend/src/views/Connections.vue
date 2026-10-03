@@ -37,9 +37,17 @@ async function fetchDbs() {
     }
     const list = resp.data.databases || []
     dbOptions.value = list.map((d: string) => ({ label: d, value: d }))
-    msg.success(`拉取到 ${list.length} 个数据库`)
+    // 权限检测语义:列举结果即该账号有备份权限的库,默认全选
+    form.value.db_names = [...list]
+    if (!list.length) {
+      msg.warning('该账号没有可备份的数据库(权限不足,或服务器上没有业务库)')
+    } else {
+      msg.success(`检测通过:该账号可备份 ${list.length} 个数据库,已默认全选`)
+    }
+    return list.length > 0
   } catch (e: any) {
-    msg.error(e.response?.data?.detail || '拉取数据库列表失败')
+    msg.error(e.response?.data?.detail || '权限检测失败,请检查主机/账号/密码')
+    return false
   } finally {
     loadingDbs.value = false
   }
@@ -52,6 +60,16 @@ const typeOptions = [
   { label: 'Redis', value: 'redis' },
   { label: 'SQLite', value: 'sqlite' },
 ]
+
+let detectTimer: number | undefined
+
+function tryAutoDetect() {
+  const f = form.value
+  if (!['pg', 'mysql', 'mongo'].includes(f.type)) return
+  if (!f.host || !f.username || (!f.password && !editing.value)) return
+  if (detectTimer) window.clearTimeout(detectTimer)
+  detectTimer = window.setTimeout(() => { fetchDbs() }, 800)
+}
 
 async function load() {
   loading.value = true
@@ -152,7 +170,7 @@ onMounted(load)
       <n-form-item label="名称"><n-input v-model:value="form.name" placeholder="例如:生产库" /></n-form-item>
       <n-form-item label="类型"><n-select v-model:value="form.type" :options="typeOptions" /></n-form-item>
       <n-space>
-        <n-form-item label="主机"><n-input v-model:value="form.host" placeholder="127.0.0.1" /></n-form-item>
+        <n-form-item label="主机"><n-input v-model:value="form.host" placeholder="127.0.0.1" @blur="tryAutoDetect" /></n-form-item>
         <n-form-item label="端口"><n-input-number v-model:value="form.port" /></n-form-item>
       </n-space>
       <n-form-item label="数据库">
@@ -164,22 +182,47 @@ onMounted(load)
                 filterable
                 :options="dbOptions"
                 :loading="loadingDbs"
-                placeholder="点击右侧按钮拉取库列表后多选"
+                placeholder="填完账号后自动检测权限并列出库"
                 style="width: 260px"
               />
-              <n-button :loading="loadingDbs" @click="fetchDbs">拉取数据库列表</n-button>
+              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
             </n-space>
           </template>
           <template v-else-if="form.type === 'mysql'">
-            <n-text depth="3">MySQL 默认备份全部数据库</n-text>
+            <n-space align="center" style="width: 100%">
+              <n-select
+                v-model:value="form.db_names"
+                multiple
+                filterable
+                :options="dbOptions"
+                :loading="loadingDbs"
+                placeholder="填完账号后自动检测权限并列出库"
+                style="width: 260px"
+              />
+              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+            </n-space>
+          </template>
+          <template v-else-if="form.type === 'mongo'">
+            <n-space align="center" style="width: 100%">
+              <n-select
+                v-model:value="form.db_names"
+                multiple
+                filterable
+                :options="dbOptions"
+                :loading="loadingDbs"
+                placeholder="填完账号后自动检测权限并列出库"
+                style="width: 260px"
+              />
+              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+            </n-space>
           </template>
           <template v-else>
-            <n-input v-model:value="form.db_name" />
+            <n-input v-model:value="form.db_name" placeholder="SQLite 填库文件路径;Redis 留空即整实例" />
           </template>
         </n-form-item>
-      <n-form-item label="用户名"><n-input v-model:value="form.username" /></n-form-item>
+      <n-form-item label="用户名"><n-input v-model:value="form.username" @blur="tryAutoDetect" /></n-form-item>
       <n-form-item :label="editing ? '密码(留空表示不修改)' : '密码'">
-        <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="留空不改" />
+        <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="留空不改" @blur="tryAutoDetect" />
       </n-form-item>
       <n-space justify="end">
         <n-button @click="show = false">取消</n-button>
