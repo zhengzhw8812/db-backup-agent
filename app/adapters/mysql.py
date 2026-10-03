@@ -98,7 +98,7 @@ class MysqlAdapter:
         再剔除系统库。密码走 defaults-extra-file,不上 argv。"""
         defaults_file = self._write_defaults(info)
         try:
-            cmd = ["mysql", f"--defaults-extra-file={defaults_file}", "-B", "-e", "SHOW DATABASES"]
+            cmd = ["mysql", f"--defaults-extra-file={defaults_file}", "-B", "-N", "-e", "SHOW DATABASES"]
             if info.host:
                 cmd[2:2] = [f"-h{info.host}"]
             if info.port:

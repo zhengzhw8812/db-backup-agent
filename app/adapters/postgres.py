@@ -63,27 +63,55 @@ class PostgresAdapter:
         run_subprocess(cmd, env=self.env(info), timeout=10, is_cancelled=is_cancelled)
 
     def list_databases(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> list[str]:
-        """列出该账号有备份权限(CONNECT)的非模板库:连维护库 postgres(失败回退
-        template1)→ pg_database + has_database_privilege 过滤。密码仅走 PGPASSWORD env。"""
-        # 备份权限语义:账号对该库有 CONNECT 且可读(has_database_privilege 过滤不可连的库)
-        sql = ("SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn "
-               "AND has_database_privilege(current_user, datname, 'CONNECT') ORDER BY 1")
+        """列出该账号真正可备份(pg_dump 可读到数据)的库,两阶段:
+
+        1. 维护库(postgres,失败回退 template1)列出非模板库;
+        2. 逐库探测"读数据"能力:超级用户 / pg_read_all_data 角色 / 库 owner /
+           任一用户表或视图有 SELECT —— 全无则该库对账号不可备份,剔除。
+        (public 角色默认对全部库有 CONNECT,单看 CONNECT 无鉴别力。)
+        密码仅走 PGPASSWORD env。"""
+        list_sql = ("SELECT datname FROM pg_database "
+                    "WHERE datistemplate = false AND datallowconn ORDER BY 1")
+        probe_sql = (
+            "SELECT 1 WHERE "
+            "EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolsuper) "
+            "OR pg_has_role(current_user, 'pg_read_all_data', 'member') "
+            "OR EXISTS (SELECT 1 FROM pg_tables "
+            "   WHERE schemaname NOT IN ('pg_catalog','information_schema','pg_toast') "
+            "   AND has_table_privilege(current_user, quote_ident(schemaname)||'.'||quote_ident(tablename), 'SELECT')) "
+            "OR EXISTS (SELECT 1 FROM pg_views "
+            "   WHERE schemaname NOT IN ('pg_catalog','information_schema') "
+            "   AND has_table_privilege(current_user, quote_ident(schemaname)||'.'||quote_ident(viewname), 'SELECT')) "
+            "OR (SELECT datdba FROM pg_database WHERE datname = current_database())::regrole::text = current_user "
+            "LIMIT 1"
+        )
         last_err: Exception | None = None
         for maint in ("postgres", "template1"):
-            cmd = ["psql", "--no-password", "-t", "-A"]  # -t 去表头, -A 不对齐
+            base = ["psql", "--no-password", "-t", "-A"]
             if info.host:
-                cmd += ["-h", info.host]
+                base += ["-h", info.host]
             if info.port:
-                cmd += ["-p", str(info.port)]
+                base += ["-p", str(info.port)]
             if info.username:
-                cmd += ["-U", info.username]
-            cmd += ["-d", maint, "-c", sql]
+                base += ["-U", info.username]
             try:
-                out = run_subprocess_capture(cmd, env=self.env(info), timeout=10, is_cancelled=is_cancelled)
-                return [ln.strip() for ln in out.splitlines() if ln.strip()]
+                out = run_subprocess_capture(base + ["-d", maint, "-c", list_sql],
+                                             env=self.env(info), timeout=10, is_cancelled=is_cancelled)
+                candidates = [ln.strip() for ln in out.splitlines() if ln.strip()]
             except RuntimeError as e:
                 last_err = e
                 continue
+            allowed: list[str] = []
+            for dbname in candidates:
+                probe_cmd = base + ["-d", dbname, "-t", "-A", "-c", probe_sql]
+                try:
+                    probed = run_subprocess_capture(probe_cmd, env=self.env(info),
+                                                    timeout=10, is_cancelled=is_cancelled)
+                except RuntimeError:
+                    continue  # 连不上/无权限的库直接剔除
+                if probed.strip() == "1":
+                    allowed.append(dbname)
+            return allowed
         raise RuntimeError(f"无法连接到维护库 postgres/template1,请检查用户对维护库的 CONNECT 权限: {last_err}")
 
 

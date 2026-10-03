@@ -105,23 +105,27 @@ def _with_permission(databases: list[str]) -> dict:
 
 
 def list_databases_for_payload(data) -> dict:
-    """保存前:用表单明文凭证列出可备份的库(仅 PG)。其它类型直接抛,由路由转 400。"""
-    if data.type != "pg":
-        raise NotImplementedError("该类型暂不支持选择数据库;MySQL 默认全库备份,其余类型请直接填写")
+    """保存前:用表单明文凭证列出该账号有备份权限的库(pg/mysql/mongo)。
+    redis/sqlite 无列举能力 → 空列表(前端隐藏选择器,整实例/整文件备份)。"""
+    adapter = get_adapter(data.type)
+    if not hasattr(adapter, "list_databases"):
+        return _with_permission([])
     info = ConnectionInfo(
         type=data.type, host=data.host, port=data.port, db_name=data.db_name,
         username=data.username, password=data.password,
     )
-    return _with_permission(get_adapter(data.type).list_databases(info))
+    return _with_permission(adapter.list_databases(info))
 
 
 def list_databases_for_connection(db: Session, crypto: Crypto, conn_id: int) -> dict:
-    """保存后:解密已存密码列出库(编辑态、密码未改时用)。"""
+    """保存后:解密已存密码列出该账号有备份权限的库(编辑态、密码未改时用)。
+    redis/sqlite 无列举能力 → 空列表(前端隐藏选择器,整实例/整文件备份)。"""
     c = get_connection(db, conn_id)
-    if c.type != "pg":
-        raise NotImplementedError("该类型暂不支持选择数据库;MySQL 默认全库备份,其余类型请直接填写")
+    adapter = get_adapter(c.type)
+    if not hasattr(adapter, "list_databases"):
+        return _with_permission([])
     info = ConnectionInfo(
         type=c.type, host=c.host, port=c.port, db_name=c.db_name,
         username=c.username, password=decrypt_password(c, crypto),
     )
-    return _with_permission(get_adapter(c.type).list_databases(info))
+    return _with_permission(adapter.list_databases(info))

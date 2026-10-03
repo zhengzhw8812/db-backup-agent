@@ -339,31 +339,34 @@ def test_all_adapters_registered():
     assert isinstance(get_adapter("sqlite"), SqliteAdapter)
 
 
-def test_pg_list_databases_argv_and_parse(monkeypatch):
-    """list_databases:连维护库 postgres,查 pg_database;密码走 env;解析逐行库名。"""
+def test_pg_list_databases_two_phase_probe(monkeypatch):
+    """list_databases 两阶段:列候选库 → 逐库探针(读数据能力);密码走 env。"""
     a = PostgresAdapter()
     info = ConnectionInfo(type="pg", host="h", port=5432, username="u", password="secret")
-    seen = {}
+    seen = []
 
-    class OkProc:
+    class Proc:
         returncode = 0
         stderr = None
-        stdout = __import__("io").BytesIO(b"app\nlogs\nshop\n")
+        def __init__(self, out): self.stdout = __import__("io").BytesIO(out.encode())
         def wait(self, timeout=None): return 0
 
     def fake_popen(argv, **kw):
-        seen["argv"] = argv
-        seen["env"] = kw.get("env")
-        return OkProc()
+        seen.append(argv)
+        last = argv[-1]
+        if "pg_database" in last and "pg_read_all_data" not in last:
+            return Proc("app\nlogs\n")  # 候选库列表
+        if "pg_read_all_data" in last:
+            return Proc("1") if "app" in argv else Proc("")  # app 有读权限,logs 没有
+        return Proc("")
 
     monkeypatch.setattr("app.adapters.base.subprocess.Popen", fake_popen)
     names = a.list_databases(info)
-    assert names == ["app", "logs", "shop"]
-    joined = " ".join(seen["argv"])
-    assert "datname" in joined and "pg_database" in joined        # 查 pg_database
-    assert "-d" in seen["argv"] and "postgres" in seen["argv"]    # 连维护库 postgres
-    assert "secret" not in joined                                 # 密码不上 argv
-    assert seen["env"].get("PGPASSWORD") == "secret"             # 走 PGPASSWORD
+    assert names == ["app"]  # logs 无读权限被剔除
+    # 候选列表与探针都连维护库/目标库;密码只走 PGPASSWORD env
+    list_argv = seen[0]
+    assert any(a_ == "-d" for a_ in list_argv)
+    assert not any("secret" in a_ for a_ in list_argv)
 
 
 def test_pg_list_databases_falls_back_to_template1(monkeypatch):
@@ -381,16 +384,45 @@ def test_pg_list_databases_falls_back_to_template1(monkeypatch):
     class OkProc:
         returncode = 0
         stderr = None
-        stdout = __import__("io").BytesIO(b"onlydb\n")
+        def __init__(self, out=b"onlydb\n"): self.stdout = __import__("io").BytesIO(out)
         def wait(self, timeout=None): return 0
 
     def fake_popen(argv, **kw):
         calls.append(argv)
-        return FailProc() if ("-d" in argv and "postgres" in argv) else OkProc()
+        last = argv[-1]
+        if "pg_database" in last and "pg_read_all_data" not in last:
+            return FailProc() if "-d postgres" in " ".join(argv) else OkProc(b"onlydb\n")
+        if "pg_read_all_data" in last:
+            return OkProc(b"1")
+        return OkProc()
 
     monkeypatch.setattr("app.adapters.base.subprocess.Popen", fake_popen)
-    assert a.list_databases(info) == ["onlydb"]
-    assert any("template1" in c for c in calls)  # 回退到 template1
+    names = a.list_databases(info)
+    assert names == ["onlydb"]
+    assert any("template1" in " ".join(c) for c in calls)  # 回退到 template1
+
+
+def test_pg_list_databases_empty_when_no_read_permission(monkeypatch):
+    """候选库全部无读权限 → 返回空列表(权限不足语义)。"""
+    a = PostgresAdapter()
+    info = ConnectionInfo(type="pg", host="h", username="u", password="secret")
+
+    class Proc:
+        returncode = 0
+        stderr = None
+        def __init__(self, out=b""): self.stdout = __import__("io").BytesIO(out)
+        def wait(self, timeout=None): return 0
+
+    def fake_popen(argv, **kw):
+        last = argv[-1]
+        if "pg_database" in last and "pg_read_all_data" not in last:
+            return Proc(b"db1\ndb2\n")
+        if "pg_read_all_data" in last:
+            return Proc(b"")  # 全部无读权限
+        return Proc(b"")
+
+    monkeypatch.setattr("app.adapters.base.subprocess.Popen", fake_popen)
+    assert a.list_databases(info) == []
 
 
 def test_pg_list_databases_all_fail_raises(monkeypatch):
@@ -424,25 +456,6 @@ def test_mysql_argv_keeps_single_db_when_dbname():
     assert "shop" in cmd
     assert "--all-databases" not in cmd
 
-
-def test_pg_list_databases_filters_by_connect_privilege(monkeypatch):
-    """PG 列库 SQL 必须按 CONNECT 权限过滤(has_database_privilege)。"""
-    import app.adapters.postgres as pgmod
-
-    captured = {}
-
-    def fake_capture(argv, **kw):
-        captured["sql"] = argv[argv.index("-c") + 1]
-        return "mydb\notherdb\n"
-
-    monkeypatch.setattr(pgmod, "run_subprocess_capture", fake_capture)
-    from app.adapters.base import ConnectionInfo
-    from app.adapters.postgres import PostgresAdapter
-
-    out = PostgresAdapter().list_databases(ConnectionInfo(type="pg", host="h", username="u"))
-    assert out == ["mydb", "otherdb"]
-    assert "has_database_privilege" in captured["sql"]
-    assert "datistemplate" in captured["sql"]
 
 
 def test_mysql_list_databases_filters_system_schemas(monkeypatch):

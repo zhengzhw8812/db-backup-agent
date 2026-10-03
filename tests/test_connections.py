@@ -224,10 +224,19 @@ def test_list_databases_pre_save_failure_returns_400(authed, monkeypatch):
 
 
 def test_list_databases_unsupported_type(authed):
-    """MySQL/Mongo/Redis/SQLite 不支持选库 → 400 + 友好提示。"""
-    r = authed.post("/api/v1/connections/list-databases", json={"type": "mysql"})
-    assert r.status_code == 400
-    assert "不支持" in r.json()["detail"]
+    """无列举能力的类型(sqlite)→ 空列表(has_backup_permission=False)。"""
+    from app.db import session as _session
+    from app.db.models import DbConnection
+
+    db = _session._SessionLocal()
+    c = DbConnection(name="s1", type="sqlite", db_name="x.db")
+    db.add(c); db.commit(); db.refresh(c)
+    cid = c.id
+    db.close()
+    r = authed.post(f"/api/v1/connections/{cid}/databases")
+    assert r.status_code == 200
+    assert r.json() == {"databases": [], "has_backup_permission": False}
+
 
 
 def test_list_databases_post_save_success(authed, monkeypatch):
