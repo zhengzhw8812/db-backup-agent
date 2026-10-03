@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 import os
 import tempfile
 from typing import Callable
@@ -111,6 +112,25 @@ class MysqlAdapter:
                 os.unlink(defaults_file)
             except OSError:
                 pass
+
+
+    def dump_set(self, info: ConnectionInfo, db_names: list[str], dest_path: str):
+        """多库备份集:mysqldump --databases(原生自带 CREATE DATABASE)→ gzip。"""
+        import gzip
+
+        defaults = self._write_defaults(info)
+        try:
+            argv = ["mysqldump", f"--defaults-extra-file={defaults}",
+                    "--databases", *db_names]
+            sql = run_subprocess_capture(argv, timeout=None)
+        finally:
+            try:
+                os.unlink(defaults)
+            except OSError:
+                pass
+        with gzip.open(dest_path, "wb", compresslevel=6) as f:
+            f.write(sql.encode("utf-8"))
+        return Path(dest_path)
 
 
 register_adapter(MysqlAdapter())

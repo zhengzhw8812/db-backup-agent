@@ -168,7 +168,8 @@ def test_resolve_db_names_mysql_all_when_empty(tmp_path):
         db.close()
 
 
-def test_enqueue_backup_creates_one_record_per_db(tmp_path, monkeypatch):
+def test_enqueue_backup_creates_single_set_record(tmp_path, monkeypatch):
+    """多库(≥2)→ 单条备份集记录(db_names=JSON);单库语义不变。"""
     from app.services.backup_service import enqueue_backup
     from app.db.session import init_engine, create_all
     from app.db.models import DbConnection, BackupRecord
@@ -179,10 +180,10 @@ def test_enqueue_backup_creates_one_record_per_db(tmp_path, monkeypatch):
         c = DbConnection(name="c", type="pg", db_names=json.dumps(["app", "logs", "shop"]))
         db.add(c); db.commit(); db.refresh(c)
         recs = enqueue_backup(db, c, "manual")
-        assert len(recs) == 3
-        assert sorted(r.db_name for r in recs) == ["app", "logs", "shop"]
-        assert all(r.status == "running" for r in recs)
-        assert db.query(BackupRecord).count() == 3
+        assert len(recs) == 1
+        assert json.loads(recs[0].db_names) == ["app", "logs", "shop"]
+        assert recs[0].db_name is None and recs[0].status == "running"
+        assert db.query(BackupRecord).count() == 1
     finally:
         db.close()
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 from typing import Callable
 
 import json
@@ -81,6 +82,20 @@ class MongoAdapter:
                 "JSON.stringify(db.adminCommand({listDatabases: 1, authorizedDatabases: true}))"]
         out = run_subprocess_capture(cmd, timeout=15, is_cancelled=is_cancelled)
         return _parse_list_output(out)
+
+
+    def dump_set(self, info: ConnectionInfo, db_names: list[str], dest_path: str):
+        """多库备份集:mongodump --archive --gzip --nsList(原生多库单归档)。"""
+        argv = ["mongodump", f"--archive={dest_path}", "--gzip",
+                f"--nsList={','.join(db_names)}"]
+        if info.host:
+            argv += ["--host", info.host]
+        if info.port:
+            argv += ["--port", str(info.port)]
+        if info.username:
+            argv += ["-u", info.username, "-p", info.password or ""]
+        run_subprocess(argv, timeout=None)
+        return Path(dest_path)
 
 
 register_adapter(MongoAdapter())

@@ -58,6 +58,7 @@ class BackupRecord(Base):
     connection_id: Mapped[int] = mapped_column(ForeignKey("db_connections.id", ondelete="CASCADE"), nullable=False)
     trigger: Mapped[str] = mapped_column(String(16), nullable=False)  # manual/scheduled
     db_name: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 本记录备份的具体库;MySQL 全库/旧记录为 NULL
+    db_names: Mapped[str | None] = mapped_column(Text, nullable=True)  # 备份集:JSON 数组(≥2 库打包为单记录)
     status: Mapped[str] = mapped_column(String(16), nullable=False)   # running/success/failed/cancelled
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

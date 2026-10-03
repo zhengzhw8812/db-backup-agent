@@ -59,8 +59,8 @@ def test_run_creates_record_and_enqueues(authed):
     assert body["record_ids"] and len(body["record_ids"]) == 1
 
 
-def test_run_multi_db_creates_record_per_db(authed, monkeypatch):
-    """PG 多库连接:一次 run 为每个库各建一条记录,入队单个 backup_job 带 record_ids 列表。"""
+def test_run_multi_db_creates_single_set_record(authed, monkeypatch):
+    """PG 多库连接:多库 → 单条备份集记录(db_names=JSON),入队 backup_job。"""
     authed.app.state.arq = FakeArq()
     from app.db import session as _session
     from app.db.models import DbConnection
@@ -73,12 +73,13 @@ def test_run_multi_db_creates_record_per_db(authed, monkeypatch):
     assert r.status_code == 201
     body = r.json()
     assert body["status"] == "running"
-    assert len(body["record_ids"]) == 2
-    assert {x["db_name"] for x in body["records"]} == {"app", "logs"}
+    assert len(body["record_ids"]) == 1  # 备份集:单记录
+    assert body["records"][0]["db_name"] is None
+    assert json.loads(body["records"][0]["db_names"]) == ["app", "logs"]
     # 入队签名:("backup_job", connection_id, [record_ids])
     assert authed.app.state.arq.enqueued[0][0] == "backup_job"
     assert authed.app.state.arq.enqueued[0][1] == conn_id
-    assert sorted(authed.app.state.arq.enqueued[0][2]) == sorted(body["record_ids"])
+    assert authed.app.state.arq.enqueued[0][2] == body["record_ids"]
 
 
 def test_list_jobs_and_cancel(authed, monkeypatch):

@@ -9,6 +9,7 @@ class BackupRunRequest(BaseModel):
 
 
 class JobRecordRef(BaseModel):
+    db_names: str | None = None
     record_id: int
     db_name: str | None = None
     status: str

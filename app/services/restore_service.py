@@ -11,8 +11,15 @@ from app.core.archive import decompress_file, sha256_of_file
 from app.core.fsutil import safe_remove
 from app.adapters.base import get_adapter, BackupCancelled
 from app.services.backup_service import _conn_info
+from app.services.backup_set import restore_set
 from app.workers.progress import ProgressReporter
 from app.core.clock import utcnow
+
+
+def _is_set_file(file_path: str | None) -> bool:
+    return bool(file_path and (".set.tar.gz" in file_path
+                               or ".set.sql.gz" in file_path
+                               or ".set.archive.gz" in file_path))
 
 
 def run_restore(
@@ -36,6 +43,11 @@ def run_restore(
     if restore_record.started_at is None:
         restore_record.started_at = now_fn()
     db.commit()
+
+    # 备份集(多库打包):整集还原走专用管线(partial 语义,单文件校验不适用)
+    if (backup_record.db_names or "").count(",") >= 1 or _is_set_file(backup_record.file_path):
+        return restore_set(db, crypto, target_conn, backup_record,
+                           restore_record_id, backup_dir, reporter)
 
     raw_path = backup_dir / f"restore_{restore_record_id}.sql"
     start = time.monotonic()

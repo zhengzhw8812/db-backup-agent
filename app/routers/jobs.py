@@ -53,7 +53,7 @@ async def run_now(payload: BackupRunRequest, request: Request, db: Session = Dep
     return JobRunResponse(
         connection_id=conn.id,
         record_ids=[r.id for r in records],
-        records=[{"record_id": r.id, "db_name": r.db_name, "status": r.status} for r in records],
+        records=[{"record_id": r.id, "db_name": r.db_name, "db_names": r.db_names, "status": r.status} for r in records],
         status="running",
     )
 

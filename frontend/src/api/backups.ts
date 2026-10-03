@@ -15,6 +15,7 @@ export interface BackupFile {
   verify_status: string | null
   verified_at: string | null
   verify_error: string | null
+  db_names: string | null  // 备份集:JSON 数组文本
 }
 
 export const listBackups = () => client.get<BackupFile[]>('/backups')

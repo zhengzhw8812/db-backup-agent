@@ -23,6 +23,11 @@ const backups = ref<BackupFile[]>([])
 const conns = ref<Connection[]>([])
 const restores = ref<Restore[]>([])
 const selectedBackup = ref<number | null>(null)
+const selectedSetCount = computed(() => {
+  const b = backups.value.find(x => x.id === selectedBackup.value)
+  if (!b?.db_names) return 0
+  try { return (JSON.parse(b.db_names) as string[]).length } catch { return 0 }
+})
 const selectedConn = ref<number | null>(null)
 const showConfirm = ref(false)
 const confirmText = ref('')

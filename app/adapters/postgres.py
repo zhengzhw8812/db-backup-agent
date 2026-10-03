@@ -62,6 +62,19 @@ class PostgresAdapter:
         cmd += ["-c", "select 1"]
         run_subprocess(cmd, env=self.env(info), timeout=10, is_cancelled=is_cancelled)
 
+    def base_argv(self, info: ConnectionInfo, dbname: str | None = None) -> list[str]:
+        """psql 基础参数(--no-password/-t/-A + host/port/user/db)。密码走 PGPASSWORD。"""
+        argv = ["psql", "--no-password", "-t", "-A"]
+        if info.host:
+            argv += ["-h", info.host]
+        if info.port:
+            argv += ["-p", str(info.port)]
+        if info.username:
+            argv += ["-U", info.username]
+        if dbname:
+            argv += ["-d", dbname]
+        return argv
+
     def list_databases(self, info: ConnectionInfo, *, is_cancelled: Callable[[], bool] | None = None) -> list[str]:
         """列出该账号真正可备份(pg_dump 可读到数据)的库,两阶段:
 

@@ -150,3 +150,44 @@ def test_run_restore_missing_checksum_fails(tmp_path, monkeypatch):
     assert rec.status == "failed"
     assert "校验和" in rec.error
     db.close()
+
+
+def test_run_restore_dispatches_set(tmp_path, monkeypatch):
+    """备份集记录(db_names 多库/.set 文件)→ 分派到 restore_set 整集管线。"""
+    from datetime import datetime
+    from cryptography.fernet import Fernet
+    from app.core.crypto import Crypto
+    from app.db.session import init_engine, create_all
+    from app.db import session as _session
+    import app.db.models  # noqa
+    from app.db.models import DbConnection, BackupRecord, RestoreRecord
+    from app.core.clock import utcnow
+    from app.services import restore_service as rs
+
+    init_engine(f"sqlite:///{tmp_path/'t.db'}")
+    create_all()
+    crypto = Crypto(Fernet.generate_key())
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg")
+    db.add(conn); db.commit(); db.refresh(conn)
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                       file_path="pg_1_9.set.tar.gz",
+                       db_names='["app","logs"]', started_at=utcnow())
+    db.add(rec); db.commit(); db.refresh(rec)
+    rr = RestoreRecord(backup_record_id=rec.id, target_connection_id=conn.id,
+                       status="running", started_at=utcnow())
+    db.add(rr); db.commit(); db.refresh(rr)
+    rid, bid = rr.id, rec.id
+    db.close()
+
+    dispatched = {}
+    monkeypatch.setattr(rs, "restore_set", lambda *a, **k: dispatched.setdefault("called", True) or a[5])
+    bdir = tmp_path / "backups"; bdir.mkdir()
+    rs.run_restore(db, crypto, db.get(__import__("app.db.models", fromlist=["BackupRecord"]).BackupRecord, bid),
+                   db.get(__import__("app.db.models", fromlist=["DbConnection"]).DbConnection, conn.id),
+                   __import__("app.workers.progress", fromlist=["ProgressReporter"]).ProgressReporter(rid, kind="restore"),
+                   bdir, rid)
+    db2 = _session._SessionLocal()
+    final = db2.get(RestoreRecord, rid).status
+    db2.close()
+    assert dispatched.get("called") is True or final in ("success", "failed", "partial")

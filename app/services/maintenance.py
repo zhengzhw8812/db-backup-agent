@@ -50,6 +50,7 @@ def migrate_schema(db: Session) -> None:
     _ensure_column(db, "backup_records", "verify_status", "TEXT")
     _ensure_column(db, "backup_records", "verified_at", "DATETIME")
     _ensure_column(db, "backup_records", "verify_error", "TEXT")
+    _ensure_column(db, "backup_records", "db_names", "TEXT")
     _ensure_column(db, "notification_config", "notify_watchdog", "BOOLEAN NOT NULL DEFAULT 1")
     _ensure_column(db, "cloud_destinations", "mount_config", "TEXT")
     _ensure_column(db, "cloud_destinations", "mount_password_enc", "TEXT")
