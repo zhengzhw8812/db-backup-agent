@@ -20,6 +20,12 @@ from app.core.clock import utcnow
 from app.db.models import BackupRecord, RestoreRecord
 
 
+def _psql_capture(argv: list[str], env: dict | None = None) -> str:
+    from app.adapters.postgres import run_subprocess_capture
+
+    return run_subprocess_capture(argv, env=env, timeout=30)
+
+
 def _psql_ok(argv: list[str], env: dict | None = None) -> bool:
     """跑一条 psql 命令,退出码 0 = True。(测试可替换)"""
     from app.adapters.postgres import run_subprocess
@@ -54,7 +60,8 @@ def _info_with(info: ConnectionInfo, db_name: str | None) -> ConnectionInfo:
     )
 
 
-def dump_set_pg(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> Path:
+def dump_set_pg(info: ConnectionInfo, db_names: list[str], set_dir: Path,
+                final_name: str = "set.tar.gz") -> Path:
     """逐库 pg_dump → manifest.json → tar.gz。返回归档路径。"""
     set_dir.mkdir(parents=True, exist_ok=True)
     adapter = get_adapter("pg")
@@ -64,7 +71,7 @@ def dump_set_pg(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> Pat
     manifest = {"databases": db_names, "created_at": utcnow().isoformat()}
     (set_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False))
 
-    out = set_dir.parent / "set.tar.gz"
+    out = set_dir.parent / final_name
     with tarfile.open(out, "w:gz") as tf:
         for f in sorted(set_dir.iterdir()):
             tf.add(f, arcname=f.name)
@@ -89,22 +96,24 @@ def dump_set_mysql(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> 
     return out
 
 
-def dump_set_mongo(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> Path:
+def dump_set_mongo(info: ConnectionInfo, db_names: list[str], set_dir: Path,
+                   final_name: str = "set.archive.gz") -> Path:
     """mongodump --archive --gzip --nsList(原生多库单归档)。"""
-    out = set_dir.parent / "set.archive.gz"
+    out = set_dir.parent / final_name
     get_adapter("mongo").dump_set(info, db_names, str(out))
     return out
 
 
-def dump_set(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> Path:
+def dump_set(info: ConnectionInfo, db_names: list[str], set_dir: Path,
+             final_name: str) -> Path:
     """按类型分派备份集打包。返回最终归档文件路径。"""
     set_dir.mkdir(parents=True, exist_ok=True)
     if info.type == "pg":
-        return dump_set_pg(info, db_names, set_dir)
+        return dump_set_pg(info, db_names, set_dir, final_name)
     if info.type == "mysql":
-        return dump_set_mysql(info, db_names, set_dir)
+        return dump_set_mysql(info, db_names, set_dir, final_name)
     if info.type == "mongo":
-        return dump_set_mongo(info, db_names, set_dir)
+        return dump_set_mongo(info, db_names, set_dir, final_name)
     raise ValueError(f"类型 {info.type} 不支持备份集")
 
 
@@ -135,11 +144,14 @@ def restore_set_pg(db: Session, crypto: Crypto, conn,
             try:
                 info = _info_with_password(conn, crypto, dbn)
                 env = PostgresAdapter().env(info)
-                # 库不存在则创建(探测命令非零 = 不存在)
-                if not _psql_ok(_pg_argv(info, "postgres",
-                                         ["-tAc", f"SELECT 1 FROM pg_database WHERE datname='{dbn}'"]), env):
+                # 库存在性按"结果内容"判断(psql 无行时退出码仍为 0,不能看 rc)
+                exists = _psql_capture(
+                    _pg_argv(info, "postgres",
+                             ["-tAc", f"SELECT 1 FROM pg_database WHERE datname='{dbn}'"]),
+                    env=env).strip() == "1"
+                if not exists:
                     if not _psql_ok(_pg_argv(info, "postgres",
-                                             [f'CREATE DATABASE "{dbn}"']), env):
+                                             ["-c", f'CREATE DATABASE "{dbn}"']), env):
                         errors.append(f"{dbn}: CREATE DATABASE 失败")
                         continue
                 if _psql_ok(_pg_argv(info, dbn, ["-f", str(work / f"{dbn}.sql")]), env):

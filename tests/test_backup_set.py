@@ -120,10 +120,13 @@ def test_restore_set_pg_creates_db_and_restores_in_order(tmp_path, monkeypatch):
     calls = []
     def fake_psql(argv, env=None, **kw):
         calls.append(argv)
-        if "-c" in argv and "SELECT 1 FROM pg_database" in argv[-1]:
-            return False  # 库不存在
         return True
+
+    def fake_capture(argv, env=None):
+        calls.append(argv)
+        return ""  # 探测:库不存在
     monkeypatch.setattr(bs, "_psql_ok", fake_psql)
+    monkeypatch.setattr(bs, "_psql_capture", fake_capture)
 
     # 构造真实备份集 tar
     set_dir = tmp_path / "set"; set_dir.mkdir()
@@ -164,10 +167,12 @@ def test_restore_set_partial_status(tmp_path, monkeypatch):
     def fake_psql(argv, env=None, **kw):
         if "-f" in argv and "logs.sql" in " ".join(argv):
             raise RuntimeError("logs restore boom")
-        if "-c" in argv and "SELECT 1 FROM pg_database" in argv[-1]:
-            return False
         return True
+
+    def fake_capture(argv, env=None):
+        return ""  # 探测:库不存在
     monkeypatch.setattr(bs, "_psql_ok", fake_psql)
+    monkeypatch.setattr(bs, "_psql_capture", fake_capture)
 
     set_dir = tmp_path / "set"; set_dir.mkdir()
     for dbn in ["app", "logs"]:

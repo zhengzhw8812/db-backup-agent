@@ -50,6 +50,7 @@ class BackupFileOut(BaseModel):
     verify_status: str | None = None
     verified_at: datetime | None = None
     verify_error: str | None = None
+    db_names: str | None = None   # 备份集:JSON 数组文本
 
     model_config = {"from_attributes": True}
 

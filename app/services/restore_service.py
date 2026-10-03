@@ -17,9 +17,7 @@ from app.core.clock import utcnow
 
 
 def _is_set_file(file_path: str | None) -> bool:
-    return bool(file_path and (".set.tar.gz" in file_path
-                               or ".set.sql.gz" in file_path
-                               or ".set.archive.gz" in file_path))
+    return bool(file_path and ".set." in file_path)
 
 
 def run_restore(

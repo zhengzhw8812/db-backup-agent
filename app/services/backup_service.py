@@ -182,7 +182,14 @@ def _run_backup_set(db: Session, crypto: Crypto, conn: DbConnection, record: Bac
     try:
         info = _conn_info(conn, crypto)
         reporter.report("dump", ",".join(names))
-        out = dump_set(info, names, set_dir)
+        suffix = {".tar.gz": ".tar.gz", ".sql.gz": ".sql.gz", ".archive.gz": ".archive.gz"}.get(
+            "", ".tar.gz")
+        final_name = f"{conn.type}_{conn.id}_{record.id}.set.tar.gz"
+        if conn.type == "mysql":
+            final_name = f"mysql_{conn.id}_{record.id}.set.sql.gz"
+        elif conn.type == "mongo":
+            final_name = f"mongo_{conn.id}_{record.id}.set.archive.gz"
+        out = dump_set(info, names, set_dir, final_name)
         # 命名保持 set 语义:pg_x_1.set.tar.gz / mysql_x_2.set.sql.gz / mongo_x_3.set.archive.gz
         final = backup_dir / out.name
         os.replace(out, final)
