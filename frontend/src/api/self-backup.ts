@@ -13,3 +13,4 @@ export const runSelfBackup = (fmt: 'gz' | 'sql' = 'gz') =>
 export const downloadUrl = (name: string) => `/api/v1/self-backup/${name}/download`
 export const importSql = (fd: FormData) => client.post<{ staged: boolean; message: string }>('/self-backup/import', fd)
 export const restoreListed = (name: string) => client.post<{ staged: boolean; message: string }>(`/self-backup/${name}/restore`)
+export const deleteSelfBackup = (name: string) => client.delete<{ deleted: string }>(`/self-backup/${name}`)

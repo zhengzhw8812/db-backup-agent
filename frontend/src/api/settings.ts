@@ -1,31 +1,48 @@
 import client from './client'
 
-export interface NotificationSettings {
-  email_enabled: boolean
-  smtp_host: string | null
-  smtp_port: number | null
-  smtp_ssl: boolean
-  smtp_starttls: boolean
-  smtp_user: string | null
-  smtp_password: string | null  // 仅写入
-  smtp_from: string | null
-  recipients: string | null
-  wechat_enabled: boolean
-  wechat_corp_id: string | null
-  wechat_agent_id: string | null
-  wechat_secret: string | null  // 仅写入
+export interface NotificationGlobal {
   notify_on_success: boolean
   notify_on_failure: boolean
   notify_watchdog: boolean
-  feishu_enabled: boolean
-  feishu_webhook: string | null  // 仅写入
-  feishu_secret: string | null   // 仅写入
-  serverchan_enabled: boolean
-  serverchan_sendkey: string | null  // 仅写入
 }
 
-export const getNotifications = () => client.get<NotificationSettings>('/settings/notifications')
-export const putNotifications = (data: NotificationSettings) => client.put<NotificationSettings>('/settings/notifications', data)
+export const getGlobalNotifications = () => client.get<NotificationGlobal>('/settings/notifications')
+export const putGlobalNotifications = (data: NotificationGlobal) =>
+  client.put<NotificationGlobal>('/settings/notifications', data)
+
+export type ChannelType = 'email' | 'wechat' | 'feishu' | 'serverchan'
+
+export interface Channel {
+  id: number
+  type: ChannelType
+  name: string
+  enabled: boolean
+  config: Record<string, unknown>
+  created_at: string
+}
+
+/** 创建/编辑请求体;secret 仅写入(编辑留空传 null 表示保留已存密文) */
+export interface ChannelInput {
+  type: ChannelType
+  name: string
+  enabled: boolean
+  config: Record<string, unknown>
+  secret?: Record<string, string> | null
+}
+
+export const listChannels = () => client.get<Channel[]>('/settings/notification-channels')
+export const createChannel = (data: ChannelInput) =>
+  client.post<Channel>('/settings/notification-channels', data)
+export const updateChannel = (id: number, data: ChannelInput) =>
+  client.put<Channel>(`/settings/notification-channels/${id}`, data)
+export const deleteChannel = (id: number) =>
+  client.delete<{ deleted: number }>(`/settings/notification-channels/${id}`)
+export const testChannel = (id: number) =>
+  client.post<{ id: number; name: string; type: string; ok: boolean; error: string | null }>(
+    `/settings/notification-channels/${id}/test`)
+export const testAllChannels = () =>
+  client.post<Array<{ id: number; name: string; type: string; ok: boolean; error: string | null }>>(
+    '/settings/notifications/test')
 
 export interface VerifySettings {
   auto_enabled: boolean
