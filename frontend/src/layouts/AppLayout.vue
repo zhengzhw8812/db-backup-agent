@@ -63,7 +63,7 @@ async function logout() { await auth.doLogout(); router.push('/login') }
         :value="activeKey"
         @update:value="onSelect"
       />
-      <div class="sider-version">v3.2.0</div>
+      <div class="sider-version">v3.4.0</div>
     </n-layout-sider>
 
     <!-- 移动抽屉侧栏 -->
