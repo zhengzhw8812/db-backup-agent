@@ -13,6 +13,10 @@ import * as bkApi from '../api/backups'
 import type { BackupFile } from '../api/backups'
 import * as jobsApi from '../api/jobs'
 import type { Job } from '../api/jobs'
+import * as schedApi from '../api/schedules'
+import type { Schedule } from '../api/schedules'
+import * as rsApi from '../api/restore'
+import type { Restore } from '../api/restore'
 import { useJobStream } from '../composables/useJobStream'
 import FilesTab from '../components/backup/FilesTab.vue'
 import SchedulesTab from '../components/backup/SchedulesTab.vue'
@@ -26,11 +30,17 @@ const router = useRouter()
 const conns = ref<Connection[]>([])
 const files = ref<BackupFile[]>([])
 const jobs = ref<Job[]>([])
+const schedules = ref<Schedule[]>([])
+const restores = ref<Restore[]>([])
 
 async function load() {
   try {
-    const [c, f, j] = await Promise.all([connApi.listConnections(), bkApi.listBackups(), jobsApi.listJobs()])
+    const [c, f, j, s, r] = await Promise.all([
+      connApi.listConnections(), bkApi.listBackups(), jobsApi.listJobs(),
+      schedApi.listSchedules(), rsApi.listRestores(),
+    ])
     conns.value = c.data; files.value = f.data; jobs.value = j.data
+    schedules.value = s.data; restores.value = r.data
   } catch (e: any) { msg.error('加载数据失败') }
 }
 
@@ -95,6 +105,12 @@ function onRestorePreset(id: number) {
   onTabUpdate('restore')
 }
 
+// ---------- 计划「立即执行」:执行备份并切回文件 Tab 看进度 ----------
+function onScheduleRunNow(connectionId: number) {
+  onTabUpdate('files')
+  runBackupFor(connectionId)
+}
+
 onMounted(load)
 onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 </script>
@@ -107,10 +123,10 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
       <FilesTab :files="files" :jobs="jobs" :conns="conns" @refresh="load" @restore="onRestorePreset" />
     </n-tab-pane>
     <n-tab-pane name="schedules" tab="⏰ 备份计划" display-directive="show:lazy">
-      <SchedulesTab />
+      <SchedulesTab :schedules="schedules" :conns="conns" @refresh="load" @run-now="onScheduleRunNow" />
     </n-tab-pane>
     <n-tab-pane name="restore" tab="♻️ 恢复" display-directive="show:lazy">
-      <RestoreTab :preset-id="presetBackupId" />
+      <RestoreTab :files="files" :conns="conns" :restores="restores" :preset-id="presetBackupId" @refresh="load" />
     </n-tab-pane>
   </n-tabs>
 

@@ -3,26 +3,30 @@ import EmptyState from '../EmptyState.vue'
 import { useBreakpoint } from '../../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
-import { ref, h, computed, onMounted, onUnmounted } from 'vue'
+import { ref, h, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   NCard, NDataTable, NSelect, NSpace, NButton, NDrawer, NDrawerContent,
   NModal, NInput, NSteps, NStep, NText, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import * as bkApi from '../../api/backups'
 import { useStatusTag } from '../../composables/useStatusTag'
 import type { BackupFile } from '../../api/backups'
-import * as connApi from '../../api/connections'
 import type { Connection } from '../../api/connections'
 import * as rsApi from '../../api/restore'
 import type { Restore } from '../../api/restore'
 import { useJobStream } from '../../composables/useJobStream'
 
 const msg = useMessage()
-const backups = ref<BackupFile[]>([])
-const conns = ref<Connection[]>([])
-const restores = ref<Restore[]>([])
+const props = defineProps<{
+  files: BackupFile[]; conns: Connection[]; restores: Restore[]
+  presetId: number | null   // 文件表「恢复」按钮预选的备份 id
+}>()
+const emit = defineEmits<{ (e: 'refresh'): void }>()
+
+const backups = computed(() => props.files)
 const selectedBackup = ref<number | null>(null)
+// 文件表点「恢复」→ 壳切换到本 Tab 并设置 presetId → 预选该备份
+watch(() => props.presetId, v => { if (v != null) selectedBackup.value = v }, { immediate: true })
 const selectedSetCount = computed(() => {
   const b = backups.value.find(x => x.id === selectedBackup.value)
   if (!b?.db_names) return 0
@@ -36,6 +40,7 @@ const currentRestoreId = ref<number | null>(null)
 const { events, status, subscribe } = useJobStream()
 let pollTimer: number | undefined
 
+const conns = computed(() => props.conns)
 const successBackups = computed(() => backups.value.filter(b => b.status === 'success'))
 function connLabel(id: number) { return conns.value.find(c => c.id === id)?.name ?? `#${id}` }
 const backupOptions = () => successBackups.value.map(b => ({
@@ -47,12 +52,7 @@ const targetConn = computed(() => conns.value.find(c => c.id === selectedConn.va
 const canSubmit = computed(() => selectedBackup.value != null && selectedConn.value != null)
 const confirmMatches = computed(() => targetConn.value != null && confirmText.value === targetConn.value.name)
 
-async function load() {
-  try {
-    const [b, c, r] = await Promise.all([bkApi.listBackups(), connApi.listConnections(), rsApi.listRestores()])
-    backups.value = b.data; conns.value = c.data; restores.value = r.data
-  } catch (e: any) { msg.error('加载恢复数据失败') }
-}
+async function load() { emit('refresh') }  // 数据由壳页面统一加载
 
 function openConfirm() {
   if (selectedBackup.value == null) { msg.warning('请先选择备份'); return }
