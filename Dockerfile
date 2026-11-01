@@ -1,5 +1,7 @@
 # ---------- Stage 1: 构建前端 ----------
-FROM node:20-trixie-slim AS frontend
+# 固定 $BUILDPLATFORM:双架构构建时前端编译始终跑在构建机原生架构(免 QEMU 模拟,
+# npm ci + vue-tsc 在模拟器里要慢一个量级);产物 dist 与架构无关,可直接 COPY 进目标平台
+FROM --platform=$BUILDPLATFORM node:20-trixie-slim AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
