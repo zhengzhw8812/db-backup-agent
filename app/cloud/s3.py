@@ -49,6 +49,14 @@ class S3StorageAdapter:
     def delete(self, cfg: CloudConfig, key: str) -> None:
         self._with_retry(lambda: self._client(cfg).remove_object(cfg.bucket, self._key(cfg, key)))
 
+    def list_prefix(self, cfg: CloudConfig, prefix: str) -> list[str]:
+        full = self._key(cfg, prefix)
+        objs = self._with_retry(lambda: list(self._client(cfg).list_objects(
+            cfg.bucket, prefix=full, recursive=True)))
+        strip = f"{cfg.prefix}/" if cfg.prefix else ""
+        return [(o.object_name[len(strip):] if o.object_name.startswith(strip) else o.object_name)
+                for o in objs]
+
     def test(self, cfg: CloudConfig) -> None:
         if not self._with_retry(lambda: self._client(cfg).bucket_exists(cfg.bucket)):
             raise ValueError(f"存储桶不存在: {cfg.bucket}")

@@ -47,6 +47,9 @@ class ShareStorageAdapter:
         except FileNotFoundError:
             pass  # 已不存在视为删除成功(幂等)
 
+    def list_prefix(self, cfg: CloudConfig, prefix: str) -> list[str]:
+        return sorted(f"{prefix}{p.name}" for p in self._base(cfg).glob(f"{prefix}*") if p.is_file())
+
 
 register_storage(ShareStorageAdapter("nfs"))
 register_storage(ShareStorageAdapter("smb"))

@@ -27,6 +27,11 @@ class StorageAdapter(Protocol):
         """删除对象。失败抛异常。"""
         ...
 
+    def list_prefix(self, cfg: CloudConfig, prefix: str) -> list[str]:
+        """列举前缀下对象,返回用户空间 key(已去掉 cfg.prefix 部分,
+        可直接传回 upload/delete 的 key 参数)。失败抛异常。"""
+        ...
+
     def test(self, cfg: CloudConfig) -> None:
         """连接/凭据/桶存在性校验。失败抛异常。"""
         ...

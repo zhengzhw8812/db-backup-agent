@@ -56,3 +56,55 @@ def test_s3_test_raises_when_bucket_missing(monkeypatch):
     a = S3StorageAdapter()
     with pytest.raises(ValueError):
         a.test(CloudConfig(endpoint="h:9000", access_key="ak", secret_key="sk", bucket="missing"))
+
+
+class _Obj:
+    def __init__(self, name):
+        self.object_name = name
+
+
+def test_s3_list_prefix_strips_dest_prefix(monkeypatch):
+    class ListMinio(FakeMinio):
+        def list_objects(self, bucket, prefix=None, recursive=False):
+            assert prefix == "pre/selfbackup/"
+            return [_Obj("pre/selfbackup/app-20260101-000000.db.gz"),
+                    _Obj("pre/selfbackup/app-20260102-000000.sql")]
+    monkeypatch.setattr("app.cloud.s3.Minio", ListMinio)
+    from app.cloud.s3 import S3StorageAdapter
+    a = S3StorageAdapter()
+    cfg = CloudConfig(endpoint="h:9000", access_key="ak", secret_key="sk", bucket="bk", prefix="pre")
+    # 返回用户空间 key(已去掉 cfg.prefix),可直接喂给 delete()
+    assert a.list_prefix(cfg, "selfbackup/") == [
+        "selfbackup/app-20260101-000000.db.gz",
+        "selfbackup/app-20260102-000000.sql",
+    ]
+
+
+def test_s3_list_prefix_without_dest_prefix(monkeypatch):
+    class ListMinio(FakeMinio):
+        def list_objects(self, bucket, prefix=None, recursive=False):
+            return [_Obj("selfbackup/a.db.gz")]
+    monkeypatch.setattr("app.cloud.s3.Minio", ListMinio)
+    from app.cloud.s3 import S3StorageAdapter
+    a = S3StorageAdapter()
+    cfg = CloudConfig(endpoint="h:9000", access_key="ak", secret_key="sk", bucket="bk", prefix="")
+    assert a.list_prefix(cfg, "selfbackup/") == ["selfbackup/a.db.gz"]
+
+
+def test_shares_list_prefix(tmp_path, monkeypatch):
+    monkeypatch.setattr("os.path.ismount", lambda p: True)
+    from app.cloud.shares import ShareStorageAdapter
+    a = ShareStorageAdapter("nfs")
+    base = tmp_path / "mp" / "pre" / "selfbackup"
+    base.mkdir(parents=True)
+    (base / "app-20260101-000000.db.gz").write_bytes(b"1")
+    (base / "app-20260102-000000.sql").write_bytes(b"2")
+    (base / "not-mine.txt").write_bytes(b"3")
+    cfg = CloudConfig(endpoint="", access_key="", secret_key="", bucket="",
+                      prefix="pre", mount_point=str(tmp_path / "mp"))
+    # list_prefix 不做白名单过滤(过滤归调用方),列出前缀下全部文件
+    assert a.list_prefix(cfg, "selfbackup/") == [
+        "selfbackup/app-20260101-000000.db.gz",
+        "selfbackup/app-20260102-000000.sql",
+        "selfbackup/not-mine.txt",
+    ]
