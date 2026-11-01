@@ -550,3 +550,35 @@ def test_self_backup_daily_uploads(monkeypatch, tmp_path):
     monkeypatch.setattr(sync_mod, "upload_self_backup", _boom)
     asyncio.run(sched_mod.self_backup_daily(
         SimpleNamespace(state=SimpleNamespace(crypto=crypto))))
+
+
+def test_self_backup_daily_upload_runs_off_event_loop(monkeypatch, tmp_path):
+    """云上传是阻塞 IO(退避 sleep/连接超时),必须在 worker 线程执行,不得冻结事件循环。"""
+    import asyncio
+    import threading
+    from types import SimpleNamespace
+    from app.db import session as _session
+    from app.services import scheduler as sched_mod
+    from app.services import self_backup as sb_mod
+    from app.services import sync_service as sync_mod
+    from app.core.crypto import Crypto
+    from cryptography.fernet import Fernet
+
+    fake_path = tmp_path / "app-20260301-000000.db.gz"
+    fake_path.write_bytes(b"x")
+
+    class _DB:
+        def add(self, *_): pass
+        def commit(self): pass
+        def close(self): pass
+
+    monkeypatch.setattr(sb_mod, "run_self_backup", lambda *a, **k: fake_path)
+    threads = []
+    monkeypatch.setattr(sync_mod, "upload_self_backup",
+                        lambda db, crypto, path: threads.append(threading.current_thread()))
+    monkeypatch.setattr(_session, "_SessionLocal", lambda: _DB())
+    crypto = Crypto(Fernet.generate_key())
+    main_thread = threading.current_thread()
+    asyncio.run(sched_mod.self_backup_daily(
+        SimpleNamespace(state=SimpleNamespace(crypto=crypto))))
+    assert threads and threads[0] is not main_thread

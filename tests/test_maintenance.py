@@ -204,3 +204,24 @@ def test_migrate_noop_without_legacy_config(tmp_path):
     assert migrate_notification_channels(db, crypto) == 0
     assert get_setting(db, "notification_channels_migrated") is True
     db.close()
+
+
+def test_migrate_survives_undecryptable_ciphertext(tmp_path):
+    """旧密文损坏/密钥轮换过 → 解密失败按"无该凭据"处理,迁移不得让应用起不来。"""
+    from app.db.models import NotificationConfig, NotificationChannel
+    from app.core.crypto import Crypto
+    from app.services.maintenance import migrate_notification_channels
+    from cryptography.fernet import Fernet
+
+    db = _migration_db(tmp_path)
+    crypto = Crypto(Fernet.generate_key())
+    db.add(NotificationConfig(email_enabled=True, smtp_host="h", recipients="x@y",
+                              smtp_password_enc="garbage-not-fernet"))
+    db.commit()
+    n = migrate_notification_channels(db, crypto)
+    assert n == 1  # 渠道仍创建
+    ch = db.query(NotificationChannel).one()
+    assert ch.type == "email"
+    secret = json.loads(crypto.decrypt(ch.secret_enc)) if ch.secret_enc else {}
+    assert "password" not in secret  # 解不开的凭据按未配置处理
+    db.close()

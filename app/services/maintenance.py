@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.db.models import BackupRecord, RestoreRecord, DbConnection
+from app.db.models import BackupRecord, RestoreRecord, DbConnection, SystemLog
 from app.core.clock import utcnow
 
 _STALE_MSG = "进程重启时仍为 running(判定为异常终止)"
@@ -101,7 +101,16 @@ def migrate_notification_channels(db: Session, crypto) -> int:
         return crypto.encrypt(json.dumps(secret, ensure_ascii=False))
 
     def _plain(enc) -> str | None:
-        return crypto.decrypt(enc) if enc else None
+        if not enc:
+            return None
+        try:
+            return crypto.decrypt(enc)
+        except Exception:
+            # 密文损坏/密钥轮换过:按"无该凭据"处理,迁移绝不阻断启动
+            db.add(SystemLog(level="warning", source="selfbackup",
+                             message="通知配置迁移:旧凭据解密失败,按未配置处理"))
+            db.commit()
+            return None
 
     created = 0
     if cfg is not None:

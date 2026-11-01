@@ -169,3 +169,40 @@ def test_notification_test_endpoint_all_fail(authed):
     r = authed.post("/api/v1/settings/notifications/test")
     assert r.status_code == 400
     assert r.json()["detail"][0]["ok"] is False
+
+
+def test_channel_update_merges_partial_secret(authed):
+    """编辑只填部分密钥(如只换加签)→ 其余密钥保留,不得整包覆盖清掉。"""
+    import json as _json
+    from app.db import session as _session
+    from app.db.models import NotificationChannel
+
+    r = authed.post("/api/v1/settings/notification-channels", json={
+        "type": "feishu", "name": "f", "config": {},
+        "secret": {"webhook": "https://old", "sign": "s1"},
+    }).json()
+    rr = authed.put(f"/api/v1/settings/notification-channels/{r['id']}", json={
+        "type": "feishu", "name": "f", "enabled": True, "config": {},
+        "secret": {"sign": "s2"},   # 只换加签,webhook 留空
+    })
+    assert rr.status_code == 200
+    crypto = authed.app.state.crypto
+    db = _session._SessionLocal()
+    try:
+        ch = db.get(NotificationChannel, r["id"])
+        assert _json.loads(crypto.decrypt(ch.secret_enc)) == {"webhook": "https://old", "sign": "s2"}
+    finally:
+        db.close()
+
+
+def test_channel_update_rejects_type_change(authed):
+    """渠道类型不可修改(旧类型密文残留会污染新类型);换类型应删了重建。"""
+    r = authed.post("/api/v1/settings/notification-channels", json={
+        "type": "email", "name": "e",
+        "config": {"smtp_host": "h", "recipients": "a@b"},
+    }).json()
+    rr = authed.put(f"/api/v1/settings/notification-channels/{r['id']}", json={
+        "type": "feishu", "name": "e", "enabled": True, "config": {},
+    })
+    assert rr.status_code == 422
+    assert "类型" in rr.json()["detail"]

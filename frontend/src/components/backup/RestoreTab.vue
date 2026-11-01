@@ -19,14 +19,14 @@ import { useJobStream } from '../../composables/useJobStream'
 const msg = useMessage()
 const props = defineProps<{
   files: BackupFile[]; conns: Connection[]; restores: Restore[]
-  presetId: number | null   // 文件表「恢复」按钮预选的备份 id
+  preset: { id: number; n: number } | null   // 文件表「恢复」按钮预选(带序号,重复点击也触发)
 }>()
 const emit = defineEmits<{ (e: 'refresh'): void }>()
 
 const backups = computed(() => props.files)
 const selectedBackup = ref<number | null>(null)
-// 文件表点「恢复」→ 壳切换到本 Tab 并设置 presetId → 预选该备份
-watch(() => props.presetId, v => { if (v != null) selectedBackup.value = v }, { immediate: true })
+// 文件表点「恢复」→ 壳切换到本 Tab 并设置 preset → 预选该备份
+watch(() => props.preset, v => { if (v) selectedBackup.value = v.id }, { immediate: true, deep: true })
 const selectedSetCount = computed(() => {
   const b = backups.value.find(x => x.id === selectedBackup.value)
   if (!b?.db_names) return 0

@@ -93,15 +93,24 @@ def update_channel(channel_id: int, payload: NotificationChannelIn, request: Req
     ch = db.get(NotificationChannel, channel_id)
     if ch is None:
         raise HTTPException(status_code=404, detail="渠道不存在")
+    if payload.type != ch.type:
+        raise HTTPException(status_code=422, detail="渠道类型不可修改;如需更换请删除后新建")
     _validate_channel_payload(payload, creating=False)
-    ch.type = payload.type
     ch.name = payload.name
     ch.enabled = payload.enabled
     ch.config_json = json.dumps(payload.config, ensure_ascii=False)
-    # 凭据:提供 secret 才更新(None 保留已存密文,不清空)
+    # 凭据:提供 secret 才更新,且逐字段合并(空值不覆盖)——
+    # 飞书等渠道有多个密钥字段,只填一个时其余必须保留,不能整包替换
     if payload.secret is not None:
+        old: dict = {}
+        if ch.secret_enc:
+            try:
+                old = json.loads(request.app.state.crypto.decrypt(ch.secret_enc))
+            except Exception:
+                old = {}  # 旧密文解不开(密钥轮换过)→ 视为空,以本次提交为准
+        merged = {**old, **{k: v for k, v in payload.secret.items() if v}}
         ch.secret_enc = request.app.state.crypto.encrypt(
-            json.dumps(payload.secret, ensure_ascii=False))
+            json.dumps(merged, ensure_ascii=False))
     db.commit(); db.refresh(ch)
     return _channel_out(ch)
 

@@ -99,9 +99,11 @@ function currentStep() {
 }
 
 // ---------- 文件表「恢复」按钮:切到恢复 Tab 并预选 ----------
-const presetBackupId = ref<number | null>(null)
+// 带自增序号:再次点击同一备份时引用变化,RestoreTab 的 watch 才会重新触发
+const restorePreset = ref<{ id: number; n: number } | null>(null)
+let presetSeq = 0
 function onRestorePreset(id: number) {
-  presetBackupId.value = id
+  restorePreset.value = { id, n: ++presetSeq }
   onTabUpdate('restore')
 }
 
@@ -126,7 +128,7 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
       <SchedulesTab :schedules="schedules" :conns="conns" @refresh="load" @run-now="onScheduleRunNow" />
     </n-tab-pane>
     <n-tab-pane name="restore" tab="♻️ 恢复" display-directive="show:lazy">
-      <RestoreTab :files="files" :conns="conns" :restores="restores" :preset-id="presetBackupId" @refresh="load" />
+      <RestoreTab :files="files" :conns="conns" :restores="restores" :preset="restorePreset" @refresh="load" />
     </n-tab-pane>
   </n-tabs>
 

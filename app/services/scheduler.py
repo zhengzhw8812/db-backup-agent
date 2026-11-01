@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -259,24 +260,30 @@ async def watchdog_check(app) -> None:
         db.close()
 
 async def self_backup_daily(app) -> None:
-    """每日 04:00 配置库自备份(VACUUM INTO 快照,保留 7 份)并上传云端。"""
+    """每日 04:00 配置库自备份(VACUUM INTO 快照,保留 7 份)并上传云端。
+
+    快照与云上传都是阻塞 IO(重试退避 sleep / 分钟级连接超时 / 挂载失效可长期挂住),
+    放 worker 线程执行,避免冻结事件循环(API / SSE 进度流 / 调度心跳)。"""
     from app.config import settings
     from app.services.self_backup import run_self_backup
     from app.services.sync_service import upload_self_backup
 
-    db = _session._SessionLocal()
-    try:
-        out = run_self_backup(settings.data_dir, db=db)
+    def _run() -> None:
+        db = _session._SessionLocal()
         try:
-            upload_self_backup(db, app.state.crypto, out)
-        except Exception:
-            pass  # 上云失败不影响每日自备份;逐目标失败已记日志
-    except Exception as exc:
-        try:
-            db.add(SystemLog(level="error", source="selfbackup",
-                             message=f"每日自备份失败:{exc}"))
-            db.commit()
-        except Exception:
-            pass
-    finally:
-        db.close()
+            out = run_self_backup(settings.data_dir, db=db)
+            try:
+                upload_self_backup(db, app.state.crypto, out)
+            except Exception:
+                pass  # 上云失败不影响每日自备份;逐目标失败已记日志
+        except Exception as exc:
+            try:
+                db.add(SystemLog(level="error", source="selfbackup",
+                                 message=f"每日自备份失败:{exc}"))
+                db.commit()
+            except Exception:
+                pass
+        finally:
+            db.close()
+
+    await asyncio.to_thread(_run)
