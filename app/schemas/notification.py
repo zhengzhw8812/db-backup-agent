@@ -1,53 +1,34 @@
 from __future__ import annotations
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
-class NotificationSettings(BaseModel):
-    email_enabled: bool = False
-    smtp_host: str | None = None
-    smtp_port: int | None = Field(None, ge=1, le=65535)
-    smtp_ssl: bool = False
-    smtp_starttls: bool = True
-    smtp_user: str | None = None
-    smtp_password: str | None = None        # 仅写入;Out 不返回
-    smtp_from: str | None = None
-    recipients: str | None = None
-    wechat_enabled: bool = False
-    wechat_corp_id: str | None = None
-    wechat_agent_id: str | None = None
-    wechat_secret: str | None = None        # 仅写入;Out 不返回
+class NotificationGlobal(BaseModel):
+    """全局通知开关(notification_config 仅保留这三列,渠道配置在 channels)。"""
     notify_on_success: bool = True
     notify_on_failure: bool = True
     notify_watchdog: bool = True
-    feishu_enabled: bool = False
-    feishu_webhook: str | None = None      # 仅写入
-    feishu_secret: str | None = None       # 仅写入
-    serverchan_enabled: bool = False
-    serverchan_sendkey: str | None = None  # 仅写入
 
 
-class NotificationSettingsOut(BaseModel):
-    email_enabled: bool
-    smtp_host: str | None
-    smtp_port: int | None
-    smtp_ssl: bool
-    smtp_starttls: bool
-    smtp_user: str | None
-    smtp_from: str | None
-    recipients: str | None
-    wechat_enabled: bool
-    wechat_corp_id: str | None
-    wechat_agent_id: str | None
-    notify_on_success: bool
-    notify_on_failure: bool
-    notify_watchdog: bool
-    feishu_enabled: bool
-    serverchan_enabled: bool
+class NotificationChannelIn(BaseModel):
+    """创建/更新通知渠道。config 为该类型非敏感配置;secret 仅写入、永不回传,
+    更新时留空(None)表示保留已存密文。"""
+    type: Literal["email", "wechat", "feishu", "serverchan"]
+    name: str = Field(min_length=1, max_length=50)
+    enabled: bool = True
+    config: dict = {}
+    secret: dict | None = None
+
+
+class NotificationChannelOut(BaseModel):
+    id: int
+    type: str
+    name: str
+    enabled: bool
+    config: dict = {}
     created_at: datetime
-    # 不含 smtp_password / wechat_secret
-
-    model_config = {"from_attributes": True}
 
 
 class VerifySettings(BaseModel):

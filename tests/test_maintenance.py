@@ -131,3 +131,76 @@ def test_migrate_schema_adds_missing_columns(tmp_path):
         assert json.loads(c.db_names) == ["legacydb"]
     finally:
         db.close()
+
+
+def _migration_db(tmp_path):
+    init_engine(f"sqlite:///{tmp_path/'mig.db'}")
+    create_all()
+    return _session._SessionLocal()
+
+
+def test_migrate_legacy_config_creates_channels(tmp_path):
+    """旧配置已启用的渠道各生成一行;填了凭据但禁用的(wechat)不迁。"""
+    from app.db.models import NotificationConfig, NotificationChannel
+    from app.core.crypto import Crypto
+    from app.services.maintenance import migrate_notification_channels
+    from cryptography.fernet import Fernet
+
+    db = _migration_db(tmp_path)
+    crypto = Crypto(Fernet.generate_key())
+    db.add(NotificationConfig(
+        email_enabled=True, smtp_host="h", smtp_port=465, smtp_ssl=True, smtp_starttls=False,
+        smtp_user="u", smtp_from="a@b", recipients="x@y",
+        smtp_password_enc=crypto.encrypt("pw"),
+        wechat_enabled=False, wechat_corp_id="cid", wechat_agent_id="aid",
+        wechat_secret_enc=crypto.encrypt("wsec"),
+        feishu_enabled=True, feishu_webhook_enc=crypto.encrypt("https://hook"),
+        serverchan_enabled=False))
+    db.commit()
+
+    n = migrate_notification_channels(db, crypto)
+    assert n == 2
+    chs = {c.type: c for c in db.query(NotificationChannel).all()}
+    assert set(chs) == {"email", "feishu"}
+    assert chs["email"].name == "邮箱" and chs["feishu"].name == "飞书"
+    cfg = json.loads(chs["email"].config_json)
+    assert cfg["smtp_host"] == "h" and cfg["smtp_port"] == 465 and cfg["recipients"] == "x@y"
+    assert cfg["smtp_ssl"] is True and cfg["smtp_starttls"] is False
+    assert json.loads(crypto.decrypt(chs["email"].secret_enc)) == {"password": "pw"}
+    assert json.loads(crypto.decrypt(chs["feishu"].secret_enc)) == {"webhook": "https://hook"}
+    db.close()
+
+
+def test_migrate_runs_once_marker(tmp_path):
+    """一次性标记:重跑 0 行;用户删光渠道后重跑也不复活。"""
+    from app.db.models import NotificationConfig, NotificationChannel
+    from app.core.crypto import Crypto
+    from app.services.maintenance import migrate_notification_channels
+    from app.services.settings_service import get_setting
+    from cryptography.fernet import Fernet
+
+    db = _migration_db(tmp_path)
+    crypto = Crypto(Fernet.generate_key())
+    db.add(NotificationConfig(email_enabled=True, smtp_host="h", recipients="x@y"))
+    db.commit()
+
+    assert migrate_notification_channels(db, crypto) == 1
+    assert migrate_notification_channels(db, crypto) == 0  # 标记生效
+    db.query(NotificationChannel).delete(); db.commit()  # 用户删光
+    assert migrate_notification_channels(db, crypto) == 0  # 不复活
+    assert get_setting(db, "notification_channels_migrated") is True
+    db.close()
+
+
+def test_migrate_noop_without_legacy_config(tmp_path):
+    """无旧配置:仍写标记(此后永不迁移)。"""
+    from app.core.crypto import Crypto
+    from app.services.maintenance import migrate_notification_channels
+    from app.services.settings_service import get_setting
+    from cryptography.fernet import Fernet
+
+    db = _migration_db(tmp_path)
+    crypto = Crypto(Fernet.generate_key())
+    assert migrate_notification_channels(db, crypto) == 0
+    assert get_setting(db, "notification_channels_migrated") is True
+    db.close()

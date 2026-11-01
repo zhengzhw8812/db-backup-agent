@@ -16,10 +16,11 @@ from app.routers import self_backup as self_backup_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时补齐新列/回填,再清理上次崩溃残留的 running 记录
-    from app.services.maintenance import migrate_schema, reap_stale_running
+    from app.services.maintenance import migrate_schema, reap_stale_running, migrate_notification_channels
     db = next(get_db())
     try:
         migrate_schema(db)
+        migrate_notification_channels(db, app.state.crypto)
         reap_stale_running(db)
     finally:
         db.close()

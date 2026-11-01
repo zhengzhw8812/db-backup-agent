@@ -1,87 +1,135 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.db.models import NotificationConfig
+from app.db.models import NotificationConfig, NotificationChannel
 from app.deps import get_current_account
-from app.schemas.notification import NotificationSettings, NotificationSettingsOut, VerifySettings
+from app.schemas.notification import (
+    NotificationGlobal, NotificationChannelIn, NotificationChannelOut, VerifySettings,
+)
 from app.services.settings_service import get_setting, set_setting
 
 router = APIRouter()
 
 
-def _to_out(cfg: NotificationConfig) -> NotificationSettingsOut:
-    return NotificationSettingsOut(
-        email_enabled=cfg.email_enabled, smtp_host=cfg.smtp_host, smtp_port=cfg.smtp_port,
-        smtp_ssl=cfg.smtp_ssl, smtp_starttls=cfg.smtp_starttls, smtp_user=cfg.smtp_user,
-        smtp_from=cfg.smtp_from, recipients=cfg.recipients,
-        wechat_enabled=cfg.wechat_enabled, wechat_corp_id=cfg.wechat_corp_id,
-        wechat_agent_id=cfg.wechat_agent_id, notify_on_success=cfg.notify_on_success,
-        notify_on_failure=cfg.notify_on_failure, notify_watchdog=cfg.notify_watchdog,
-        feishu_enabled=cfg.feishu_enabled, serverchan_enabled=cfg.serverchan_enabled,
-        created_at=cfg.created_at,
-    )
-
-
-def _defaults_out() -> NotificationSettingsOut:
-    """未配置时返回全默认视图——不写库(GET 保持幂等/只读)。"""
-    return NotificationSettingsOut(
-        email_enabled=False, smtp_host=None, smtp_port=None, smtp_ssl=False,
-        smtp_starttls=True, smtp_user=None, smtp_from=None, recipients=None,
-        wechat_enabled=False, wechat_corp_id=None, wechat_agent_id=None,
-        notify_on_success=True, notify_on_failure=True, notify_watchdog=True,
-        feishu_enabled=False, serverchan_enabled=False, created_at=datetime.now(timezone.utc),
-    )
-
-
-@router.get("/settings/notifications", response_model=NotificationSettingsOut)
-def get_notifications(db: Session = Depends(get_db), _=Depends(get_current_account)):
-    cfg = db.query(NotificationConfig).first()
+def _global_out(cfg: NotificationConfig | None) -> NotificationGlobal:
     if cfg is None:
-        return _defaults_out()  # 只读返回默认,不在 GET 里建行
-    return _to_out(cfg)
+        return NotificationGlobal()  # 只读返回默认,不在 GET 里建行
+    return NotificationGlobal(notify_on_success=cfg.notify_on_success,
+                              notify_on_failure=cfg.notify_on_failure,
+                              notify_watchdog=cfg.notify_watchdog)
 
 
-@router.put("/settings/notifications", response_model=NotificationSettingsOut)
-def put_notifications(payload: NotificationSettings, request: Request,
+@router.get("/settings/notifications", response_model=NotificationGlobal)
+def get_notifications(db: Session = Depends(get_db), _=Depends(get_current_account)):
+    return _global_out(db.query(NotificationConfig).first())
+
+
+@router.put("/settings/notifications", response_model=NotificationGlobal)
+def put_notifications(payload: NotificationGlobal,
                       db: Session = Depends(get_db), _=Depends(get_current_account)):
-    crypto = request.app.state.crypto
     cfg = db.query(NotificationConfig).first()
     if cfg is None:
         cfg = NotificationConfig()
         db.add(cfg)
-    cfg.email_enabled = payload.email_enabled
-    cfg.smtp_host = payload.smtp_host
-    cfg.smtp_port = payload.smtp_port
-    cfg.smtp_ssl = payload.smtp_ssl
-    cfg.smtp_starttls = payload.smtp_starttls
-    cfg.smtp_user = payload.smtp_user
-    cfg.smtp_from = payload.smtp_from
-    cfg.recipients = payload.recipients
-    cfg.wechat_enabled = payload.wechat_enabled
-    cfg.wechat_corp_id = payload.wechat_corp_id
-    cfg.wechat_agent_id = payload.wechat_agent_id
     cfg.notify_on_success = payload.notify_on_success
     cfg.notify_on_failure = payload.notify_on_failure
     cfg.notify_watchdog = payload.notify_watchdog
-    cfg.feishu_enabled = payload.feishu_enabled
-    cfg.serverchan_enabled = payload.serverchan_enabled
-    # 凭据:非空才更新(空串/None 不覆盖已存密文)
-    if payload.feishu_webhook:
-        cfg.feishu_webhook_enc = crypto.encrypt(payload.feishu_webhook)
-    if payload.feishu_secret:
-        cfg.feishu_secret_enc = crypto.encrypt(payload.feishu_secret)
-    if payload.serverchan_sendkey:
-        cfg.serverchan_sendkey_enc = crypto.encrypt(payload.serverchan_sendkey)
-    # 凭据:非空才更新(避免空串覆盖已存密文)
-    if payload.smtp_password:
-        cfg.smtp_password_enc = crypto.encrypt(payload.smtp_password)
-    if payload.wechat_secret:
-        cfg.wechat_secret_enc = crypto.encrypt(payload.wechat_secret)
     db.commit(); db.refresh(cfg)
-    return _to_out(cfg)
+    return _global_out(cfg)
+
+
+def _channel_out(ch: NotificationChannel) -> NotificationChannelOut:
+    return NotificationChannelOut(id=ch.id, type=ch.type, name=ch.name, enabled=ch.enabled,
+                                  config=json.loads(ch.config_json or "{}"),
+                                  created_at=ch.created_at)
+
+
+def _validate_channel_payload(payload: NotificationChannelIn, *, creating: bool) -> None:
+    """按类型校验必填项;创建时密钥类渠道必须首次提供 secret。违例 → 422。"""
+    cfg, secret = payload.config, payload.secret or {}
+    if payload.type == "email":
+        if not cfg.get("smtp_host") or not cfg.get("recipients"):
+            raise HTTPException(status_code=422,
+                                detail="email 渠道必填 config.smtp_host 与 config.recipients")
+    elif payload.type == "wechat":
+        if not cfg.get("corp_id") or not cfg.get("agent_id"):
+            raise HTTPException(status_code=422,
+                                detail="wechat 渠道必填 config.corp_id 与 config.agent_id")
+    elif payload.type == "feishu":
+        if creating and not secret.get("webhook"):
+            raise HTTPException(status_code=422, detail="feishu 渠道创建时必填 secret.webhook")
+    elif payload.type == "serverchan":
+        if creating and not secret.get("sendkey"):
+            raise HTTPException(status_code=422, detail="serverchan 渠道创建时必填 secret.sendkey")
+
+
+@router.get("/settings/notification-channels", response_model=list[NotificationChannelOut])
+def list_channels(db: Session = Depends(get_db), _=Depends(get_current_account)):
+    return [_channel_out(ch)
+            for ch in db.query(NotificationChannel).order_by(NotificationChannel.id).all()]
+
+
+@router.post("/settings/notification-channels", response_model=NotificationChannelOut, status_code=201)
+def create_channel(payload: NotificationChannelIn, request: Request,
+                   db: Session = Depends(get_db), _=Depends(get_current_account)):
+    _validate_channel_payload(payload, creating=True)
+    ch = NotificationChannel(
+        type=payload.type, name=payload.name, enabled=payload.enabled,
+        config_json=json.dumps(payload.config, ensure_ascii=False))
+    if payload.secret is not None:
+        ch.secret_enc = request.app.state.crypto.encrypt(
+            json.dumps(payload.secret, ensure_ascii=False))
+    db.add(ch); db.commit(); db.refresh(ch)
+    return _channel_out(ch)
+
+
+@router.put("/settings/notification-channels/{channel_id}", response_model=NotificationChannelOut)
+def update_channel(channel_id: int, payload: NotificationChannelIn, request: Request,
+                   db: Session = Depends(get_db), _=Depends(get_current_account)):
+    ch = db.get(NotificationChannel, channel_id)
+    if ch is None:
+        raise HTTPException(status_code=404, detail="渠道不存在")
+    _validate_channel_payload(payload, creating=False)
+    ch.type = payload.type
+    ch.name = payload.name
+    ch.enabled = payload.enabled
+    ch.config_json = json.dumps(payload.config, ensure_ascii=False)
+    # 凭据:提供 secret 才更新(None 保留已存密文,不清空)
+    if payload.secret is not None:
+        ch.secret_enc = request.app.state.crypto.encrypt(
+            json.dumps(payload.secret, ensure_ascii=False))
+    db.commit(); db.refresh(ch)
+    return _channel_out(ch)
+
+
+@router.delete("/settings/notification-channels/{channel_id}")
+def delete_channel(channel_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
+    ch = db.get(NotificationChannel, channel_id)
+    if ch is None:
+        raise HTTPException(status_code=404, detail="渠道不存在")
+    db.delete(ch); db.commit()
+    return {"deleted": channel_id}
+
+
+@router.post("/settings/notification-channels/{channel_id}/test")
+def test_channel(channel_id: int, request: Request,
+                 db: Session = Depends(get_db), _=Depends(get_current_account)):
+    """向单个渠道发一条测试消息。失败 → 400(带渠道名与错误)。"""
+    from app.services.notifications import _send_by_channel
+
+    ch = db.get(NotificationChannel, channel_id)
+    if ch is None:
+        raise HTTPException(status_code=404, detail="渠道不存在")
+    subject, body = "[测试] db-backup-agent", "这是一条测试通知,收到即表示渠道配置正确。"
+    try:
+        _send_by_channel(ch, request.app.state.crypto, title=subject, content=body)
+        return {"id": ch.id, "name": ch.name, "type": ch.type, "ok": True, "error": None}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{ch.name} 发送失败:{exc}")
 
 
 @router.get("/settings/verify", response_model=VerifySettings)

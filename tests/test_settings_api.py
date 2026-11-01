@@ -18,35 +18,116 @@ def test_settings_require_auth(client):
     assert client.get("/api/v1/settings/notifications").status_code == 401
 
 
-def test_get_returns_defaults_when_empty(authed):
-    r = authed.get("/api/v1/settings/notifications").json()
-    assert r["email_enabled"] is False
-    assert "smtp_password" not in r and "wechat_secret" not in r
-
-
-def test_get_is_read_only(authed):
-    """GET 不应在 DB 建行(保持幂等/只读);建行只在 PUT。"""
+def test_global_notifications_get_put(authed):
+    """全局三开关:GET 默认 True 且幂等不建行;PUT 收窄后只管三开关。"""
     from app.db import session as _session
     from app.db.models import NotificationConfig
-    authed.get("/api/v1/settings/notifications")
+
+    r = authed.get("/api/v1/settings/notifications")
+    assert r.status_code == 200
+    assert r.json() == {"notify_on_success": True, "notify_on_failure": True, "notify_watchdog": True}
     db = _session._SessionLocal()
     try:
-        assert db.query(NotificationConfig).count() == 0
+        assert db.query(NotificationConfig).count() == 0  # GET 保持只读
     finally:
         db.close()
 
+    r = authed.put("/api/v1/settings/notifications", json={"notify_on_success": False})
+    assert r.status_code == 200
+    assert r.json() == {"notify_on_success": False, "notify_on_failure": True, "notify_watchdog": True}
+    assert authed.get("/api/v1/settings/notifications").json()["notify_on_success"] is False
 
-def test_put_updates_and_hides_secrets(authed):
-    r = authed.put("/api/v1/settings/notifications", json={
-        "email_enabled": True, "smtp_host": "h", "smtp_port": 465, "smtp_ssl": True,
-        "smtp_user": "u", "smtp_password": "pw", "smtp_from": "a@b", "recipients": "x@y",
-        "wechat_enabled": False, "notify_on_success": True, "notify_on_failure": True,
+
+def test_channel_crud_lifecycle(authed):
+    r = authed.post("/api/v1/settings/notification-channels", json={
+        "type": "email", "name": "个人邮箱", "enabled": True,
+        "config": {"smtp_host": "h", "smtp_port": 465, "recipients": "a@b"},
+        "secret": {"password": "pw"},
+    })
+    assert r.status_code == 201
+    out = r.json()
+    assert out["type"] == "email" and out["name"] == "个人邮箱" and out["enabled"] is True
+    assert out["config"]["smtp_host"] == "h"
+    assert "secret" not in out and "secret_enc" not in out  # 密钥永不回传
+    cid = out["id"]
+
+    assert [c["id"] for c in authed.get("/api/v1/settings/notification-channels").json()] == [cid]
+
+    r = authed.put(f"/api/v1/settings/notification-channels/{cid}", json={
+        "type": "email", "name": "改名", "enabled": False,
+        "config": {"smtp_host": "h2", "recipients": "a@b"},
+    })
+    assert r.status_code == 200
+    assert r.json()["name"] == "改名" and r.json()["enabled"] is False
+    assert r.json()["config"]["smtp_host"] == "h2"
+
+    assert authed.delete(f"/api/v1/settings/notification-channels/{cid}").status_code == 200
+    assert authed.get("/api/v1/settings/notification-channels").json() == []
+    assert authed.delete(f"/api/v1/settings/notification-channels/{cid}").status_code == 404
+
+
+def test_channel_update_secret_blank_keeps_stored(authed):
+    """编辑不带 secret → 保留已存密文,不清空。"""
+    from app.db import session as _session
+    from app.db.models import NotificationChannel
+
+    r = authed.post("/api/v1/settings/notification-channels", json={
+        "type": "feishu", "name": "f", "config": {},
+        "secret": {"webhook": "https://h", "sign": "s"},
     }).json()
-    assert r["email_enabled"] is True
-    assert "smtp_password" not in r
-    got = authed.get("/api/v1/settings/notifications").json()
-    assert got["smtp_host"] == "h"
-    assert "smtp_password" not in got
+
+    def _secret_enc():
+        db = _session._SessionLocal()
+        try:
+            return db.get(NotificationChannel, r["id"]).secret_enc
+        finally:
+            db.close()
+
+    before = _secret_enc()
+    rr = authed.put(f"/api/v1/settings/notification-channels/{r['id']}", json={
+        "type": "feishu", "name": "f", "enabled": True, "config": {},
+    })
+    assert rr.status_code == 200
+    assert _secret_enc() == before
+
+
+def test_channel_create_validates_required_config(authed):
+    # email 缺 smtp_host/recipients → 422
+    assert authed.post("/api/v1/settings/notification-channels", json={
+        "type": "email", "name": "e", "config": {"recipients": "a@b"}}).status_code == 422
+    # wechat 缺 corp_id/agent_id → 422
+    assert authed.post("/api/v1/settings/notification-channels", json={
+        "type": "wechat", "name": "w", "config": {"agent_id": "1"}}).status_code == 422
+    # feishu 创建缺 secret.webhook → 422
+    assert authed.post("/api/v1/settings/notification-channels", json={
+        "type": "feishu", "name": "f", "config": {}}).status_code == 422
+    # serverchan 创建 secret 为空 → 422
+    assert authed.post("/api/v1/settings/notification-channels", json={
+        "type": "serverchan", "name": "s", "config": {}, "secret": {}}).status_code == 422
+
+
+def test_channel_test_endpoint(authed, monkeypatch):
+    from app.db import session as _session
+    from app.db.models import NotificationChannel
+    from app.services import notifications as nm
+
+    monkeypatch.setattr(nm, "_send_feishu", lambda secret, content: None)
+    db = _session._SessionLocal()
+    ch = NotificationChannel(type="feishu", name="飞书", enabled=True, config_json="{}")
+    db.add(ch); db.commit()
+    chid = ch.id
+    db.close()
+
+    r = authed.post(f"/api/v1/settings/notification-channels/{chid}/test")
+    assert r.status_code == 200
+    assert r.json() == {"id": chid, "name": "飞书", "type": "feishu", "ok": True, "error": None}
+
+    def boom(secret, content):
+        raise RuntimeError("hook unreachable")
+
+    monkeypatch.setattr(nm, "_send_feishu", boom)
+    r = authed.post(f"/api/v1/settings/notification-channels/{chid}/test")
+    assert r.status_code == 400 and "飞书" in r.json()["detail"]
 
 
 def test_verify_settings_get_put(authed):

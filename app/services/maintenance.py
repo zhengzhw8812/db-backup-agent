@@ -82,3 +82,65 @@ def reap_stale_running(db: Session) -> int:
     if count:
         db.commit()
     return count
+
+
+def migrate_notification_channels(db: Session, crypto) -> int:
+    """旧 notification_config 渠道字段一次性迁移为 notification_channels 行。
+
+    以 app_settings 标记 notification_channels_migrated 防复活:标记存在则永不重跑
+    (否则用户删光渠道后重启会被旧配置重建)。仅迁移旧配置中**已启用**的渠道;
+    填了凭据但未启用的视为用户主动关闭,不迁。返回生成行数。"""
+    from app.db.models import NotificationConfig, NotificationChannel
+    from app.services.settings_service import get_setting, set_setting
+
+    if get_setting(db, "notification_channels_migrated"):
+        return 0
+    cfg = db.query(NotificationConfig).first()
+
+    def _secret_enc(secret: dict) -> str:
+        return crypto.encrypt(json.dumps(secret, ensure_ascii=False))
+
+    def _plain(enc) -> str | None:
+        return crypto.decrypt(enc) if enc else None
+
+    created = 0
+    if cfg is not None:
+        if cfg.email_enabled:
+            secret = {"password": p} if (p := _plain(cfg.smtp_password_enc)) else None
+            db.add(NotificationChannel(
+                type="email", name="邮箱", enabled=True,
+                config_json=json.dumps({
+                    "smtp_host": cfg.smtp_host, "smtp_port": cfg.smtp_port,
+                    "smtp_ssl": cfg.smtp_ssl, "smtp_starttls": cfg.smtp_starttls,
+                    "smtp_user": cfg.smtp_user, "smtp_from": cfg.smtp_from,
+                    "recipients": cfg.recipients}, ensure_ascii=False),
+                secret_enc=_secret_enc(secret) if secret else None))
+            created += 1
+        if cfg.wechat_enabled:
+            secret = {"secret": s} if (s := _plain(cfg.wechat_secret_enc)) else None
+            db.add(NotificationChannel(
+                type="wechat", name="企业微信", enabled=True,
+                config_json=json.dumps({"corp_id": cfg.wechat_corp_id,
+                                        "agent_id": cfg.wechat_agent_id}, ensure_ascii=False),
+                secret_enc=_secret_enc(secret) if secret else None))
+            created += 1
+        if cfg.feishu_enabled:
+            secret: dict = {}
+            if (w := _plain(cfg.feishu_webhook_enc)):
+                secret["webhook"] = w
+            if (sg := _plain(cfg.feishu_secret_enc)):
+                secret["sign"] = sg
+            db.add(NotificationChannel(
+                type="feishu", name="飞书", enabled=True, config_json="{}",
+                secret_enc=_secret_enc(secret) if secret else None))
+            created += 1
+        if cfg.serverchan_enabled:
+            secret = {"sendkey": k} if (k := _plain(cfg.serverchan_sendkey_enc)) else None
+            db.add(NotificationChannel(
+                type="serverchan", name="Server酱", enabled=True, config_json="{}",
+                secret_enc=_secret_enc(secret) if secret else None))
+            created += 1
+        if created:
+            db.commit()
+    set_setting(db, "notification_channels_migrated", True)
+    return created
