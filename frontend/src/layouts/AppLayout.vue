@@ -13,18 +13,15 @@ const { dark, toggle } = useTheme()
 const { isMobile } = useBreakpoint()
 
 const PAGE_ICONS: Record<string, string> = {
-  dashboard: '📊', connections: '🔌', schedules: '⏰', backups: '💾',
-  restore: '♻️', cloud: '☁️', history: '📜', settings: '⚙️', logs: '📋',
+  dashboard: '📊', connections: '🔌', backups: '💾',
+  cloud: '☁️', settings: '⚙️', logs: '📋',
 }
 
 const MENU = [
   { label: '📊 仪表盘', key: 'dashboard' },
   { label: '🔌 数据库连接', key: 'connections' },
-  { label: '⏰ 备份计划', key: 'schedules' },
   { label: '💾 备份', key: 'backups' },
-  { label: '♻️ 恢复', key: 'restore' },
   { label: '☁️ 云存储', key: 'cloud' },
-  { label: '📜 备份历史', key: 'history' },
   { label: '⚙️ 设置', key: 'settings' },
   { label: '📋 日志', key: 'logs' },
 ]

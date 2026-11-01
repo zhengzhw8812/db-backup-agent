@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import PageHeader from '../components/PageHeader.vue'
-import EmptyState from '../components/EmptyState.vue'
-import { useBreakpoint } from '../composables/useBreakpoint'
+import EmptyState from '../EmptyState.vue'
+import { useBreakpoint } from '../../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
 import { ref, h, computed, onMounted, onUnmounted } from 'vue'
@@ -10,14 +9,14 @@ import {
   NModal, NInput, NSteps, NStep, NText, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import * as bkApi from '../api/backups'
-import { useStatusTag } from '../composables/useStatusTag'
-import type { BackupFile } from '../api/backups'
-import * as connApi from '../api/connections'
-import type { Connection } from '../api/connections'
-import * as rsApi from '../api/restore'
-import type { Restore } from '../api/restore'
-import { useJobStream } from '../composables/useJobStream'
+import * as bkApi from '../../api/backups'
+import { useStatusTag } from '../../composables/useStatusTag'
+import type { BackupFile } from '../../api/backups'
+import * as connApi from '../../api/connections'
+import type { Connection } from '../../api/connections'
+import * as rsApi from '../../api/restore'
+import type { Restore } from '../../api/restore'
+import { useJobStream } from '../../composables/useJobStream'
 
 const msg = useMessage()
 const backups = ref<BackupFile[]>([])
@@ -122,7 +121,7 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
 <template>
   
-  <PageHeader title="恢复" description="从历史备份还原数据库" /><n-space vertical :size="16">
+<n-space vertical :size="16">
     <n-card title="一键恢复" :bordered="false">
       <n-space vertical :size="12">
         <n-space align="center">
@@ -189,8 +188,6 @@ onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
 
 <style scoped>
 .log { margin-top: 8px; font-family: ui-monospace, monospace; font-size: 13px; max-height: 300px; overflow: auto; }
-
-<style scoped>
 .mcard { margin-bottom: 12px }
 .mrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 13px }
 .mlabel { opacity: .55; flex-shrink: 0 }

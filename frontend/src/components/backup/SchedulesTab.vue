@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import PageHeader from '../components/PageHeader.vue'
-import { relativeTime, fullTime } from '../composables/useRelativeTime'
-import EmptyState from '../components/EmptyState.vue'
-import { useBreakpoint } from '../composables/useBreakpoint'
+// 备份计划 Tab(自 Schedules.vue 平移;Task 8 再接入立即执行/props)
+import { useBreakpoint } from '../../composables/useBreakpoint'
 
 const { isMobile } = useBreakpoint()
 import { ref, h, onMounted } from 'vue'
@@ -11,10 +9,10 @@ import {
   NSelect, NSpace, NPopconfirm, NSwitch, NTag, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import * as schedApi from '../api/schedules'
-import type { Schedule } from '../api/schedules'
-import * as connApi from '../api/connections'
-import type { Connection } from '../api/connections'
+import * as schedApi from '../../api/schedules'
+import type { Schedule } from '../../api/schedules'
+import * as connApi from '../../api/connections'
+import type { Connection } from '../../api/connections'
 
 const msg = useMessage()
 const data = ref<Schedule[]>([])
@@ -67,7 +65,7 @@ const columns: DataTableColumns<Schedule> = [
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: 'Cron 表达式', key: 'cron_expr', render: r => h(NTag, { size: 'small', bordered: false }, { default: () => r.cron_expr }) },
   { title: '保留(天)', key: 'retention_days' },
-  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? h('span', { title: fullTime(r.next_run_at) }, relativeTime(r.next_run_at)) : '—' },
+  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? h('span', { title: r.next_run_at }, new Date(r.next_run_at).toLocaleString()) : '—' },
   { title: '启用', key: 'enabled', render: r => h(NSwitch, { value: r.enabled, 'onUpdate:value': (v: boolean) => toggle(r, v) }) },
   { title: '操作', key: 'actions', render: r => h(NSpace, null, {
       default: () => [
@@ -84,12 +82,11 @@ onMounted(load)
 </script>
 
 <template>
-  
-  <PageHeader title="备份计划" description="定时自动备份策略" /><n-card title="备份计划" :bordered="false">
+  <n-card title="备份计划" :bordered="false">
     <template #header-extra><n-button type="primary" @click="openAdd">+ 新增计划</n-button></template>
     <template v-if="!isMobile">
       <n-data-table v-if="data.length" :columns="columns" :data="data" :loading="loading" :bordered="false" size="small" striped />
-        <EmptyState v-else-if="!loading" icon="⏰" text="还没有备份计划" action-text="+ 新建计划" @action="openAdd()" />
+        <div v-else-if="!loading" style="padding:24px;text-align:center;opacity:.5">还没有备份计划</div>
       </template>
 <template v-else>
         <n-card v-for="s in data" :key="s.id" class="mcard" :title="connLabel(s.connection_id)" size="small">
@@ -119,3 +116,11 @@ onMounted(load)
     </n-form>
   </n-modal>
 </template>
+
+<style scoped>
+.mcard { margin-bottom: 12px }
+.mrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 13px }
+.mlabel { opacity: .55; flex-shrink: 0 }
+.mactions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap }
+.mactions .n-button { flex: 1; min-height: 44px }
+</style>
