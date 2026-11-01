@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.db.models import BackupRecord, SyncTarget, CloudDestination, SystemLog
 from app.core.crypto import Crypto
 from app.cloud.base import CloudConfig, get_storage
+
+# 自备份云端副本:对象前缀、保留份数、文件名白名单(本地快照命名一致)
+SELFBACKUP_PREFIX = "selfbackup/"
+CLOUD_KEEP = 30
+SELFBACKUP_KEY_RE = re.compile(r"^app-\d{8}-\d{6}\.(db\.gz|sql)$")
 
 
 def _cloud_config(dest: CloudDestination, crypto: Crypto) -> CloudConfig:
@@ -86,3 +92,58 @@ def delete_cloud_copies(db: Session, crypto: Crypto, connection_id: int, key: st
                              context=str(exc)))
             db.commit()
     return deleted, failed
+
+
+def _rotate_cloud_self_backups(storage, cfg: CloudConfig) -> None:
+    """云端 selfbackup/ 前缀轮转:仅匹配白名单名,按名排序删最旧,保留 CLOUD_KEEP 份。"""
+    names = [k for k in storage.list_prefix(cfg, SELFBACKUP_PREFIX)
+             if SELFBACKUP_KEY_RE.match(k[len(SELFBACKUP_PREFIX):])]
+    names.sort()
+    for old in names[:-CLOUD_KEEP]:
+        storage.delete(cfg, old)
+
+
+def upload_self_backup(db: Session, crypto: Crypto, path: Path) -> dict:
+    """把自备份快照上传到所有启用的云目标(对象 key = selfbackup/<文件名>)并做云端轮转。
+
+    自备份不属于任何连接,不走 SyncTarget 规则 —— 目标集就是全部 enabled 的云目的地,
+    需排除某目标时在云存储页禁用即可。上传/轮转逐目标独立 try/except,失败记
+    SystemLog(warning)不影响其余目标,也不影响自备份本身。返回 {synced, errors}。"""
+    synced, errors = [], []
+    key = f"{SELFBACKUP_PREFIX}{Path(path).name}"
+    dests = db.query(CloudDestination).filter(CloudDestination.enabled.is_(True)).all()
+    for dest in dests:
+        storage = None
+        try:
+            cfg = _cloud_config(dest, crypto)
+            storage = get_storage(dest.provider)
+            uri = storage.upload(cfg, str(path), key)
+            synced.append({"destination": dest.name, "uri": uri})
+        except Exception as exc:
+            errors.append({"destination": dest.name, "error": str(exc)})
+            db.add(SystemLog(level="warning", source="cloud",
+                             message=f"自备份上云失败:{dest.name}:{Path(path).name}",
+                             context=str(exc)))
+            db.commit()
+            continue
+        try:
+            _rotate_cloud_self_backups(storage, cfg)
+        except Exception as exc:
+            db.add(SystemLog(level="warning", source="cloud",
+                             message=f"云端自备份轮转失败:{dest.name}",
+                             context=str(exc)))
+            db.commit()
+    return {"synced": synced, "errors": errors}
+
+
+def delete_self_backup_cloud(db: Session, crypto: Crypto, name: str) -> None:
+    """尽力删除各启用云目标上的 selfbackup/<name> 副本;失败仅记日志。"""
+    key = f"{SELFBACKUP_PREFIX}{name}"
+    for dest in db.query(CloudDestination).filter(CloudDestination.enabled.is_(True)).all():
+        try:
+            get_storage(dest.provider).delete(_cloud_config(dest, crypto), key)
+        except Exception as exc:
+            db.add(SystemLog(level="warning", source="cloud",
+                             message=f"云自备份副本删除失败:{dest.name}:{name}",
+                             context=str(exc)))
+            db.commit()

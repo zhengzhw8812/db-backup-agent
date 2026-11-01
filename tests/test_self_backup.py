@@ -370,3 +370,183 @@ def test_export_sql_excludes_uncommitted_writes(env):
     out = sb.export_sql_dump(tmp)
     conn2.rollback(); conn2.close()
     assert "999" not in out.read_text()
+
+
+# ---------- 自备份上云 + 云端轮转 + 快照删除(v3.4.0) ----------
+
+class FakeCloudStorage:
+    """记录 upload/delete;list_prefix 返回 已上传 ∪ 预置 对象。"""
+
+    def __init__(self, preset=(), fail_upload=False):
+        self.uploads = []
+        self.deletes = []
+        self.preset = list(preset)
+        self.fail_upload = fail_upload
+
+    def upload(self, cfg, local_path, key):
+        if self.fail_upload:
+            raise RuntimeError("upload boom")
+        self.uploads.append(key)
+        return f"s3://{cfg.bucket}/{key}"
+
+    def delete(self, cfg, key):
+        self.deletes.append(key)
+
+    def list_prefix(self, cfg, prefix):
+        return sorted(set(self.preset) | {k for k in self.uploads if k.startswith(prefix)})
+
+    def test(self, cfg):
+        pass
+
+
+def _cloud_env(tmp_path, storages):
+    """建引擎 + 两个启用云目标(+1 禁用),返回 (db, crypto)。"""
+    from app.db.session import init_engine, create_all
+    from app.db import session as _session
+    import app.db.models  # noqa
+    from app.db.models import CloudDestination
+    from app.core.crypto import Crypto
+    from cryptography.fernet import Fernet
+
+    init_engine(f"sqlite:///{tmp_path}/cloud.db")
+    create_all()
+    crypto = Crypto(Fernet.generate_key())
+    db = _session._SessionLocal()
+    for i, st in enumerate(storages):
+        db.add(CloudDestination(name=f"d{i}", provider="s3", endpoint="h:9000", bucket=f"bk{i}",
+                                access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
+                                prefix="", secure=False, enabled=True))
+    db.add(CloudDestination(name="off", provider="s3", endpoint="h:9000", bucket="off",
+                            access_key_enc=crypto.encrypt("AK"), secret_enc=crypto.encrypt("SK"),
+                            prefix="", secure=False, enabled=False))
+    db.commit()
+    return db, crypto
+
+
+def test_upload_self_backup_uploads_all_enabled_dests(tmp_path, monkeypatch):
+    s1, s2 = FakeCloudStorage(), FakeCloudStorage()
+    db, crypto = _cloud_env(tmp_path, [s1, s2])
+    queue = [s1, s2]
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: queue.pop(0))
+    from app.services.sync_service import upload_self_backup, SELFBACKUP_PREFIX
+
+    snap = tmp_path / "app-20260301-000000.db.gz"
+    snap.write_bytes(b"x")
+    result = upload_self_backup(db, crypto, snap)
+    assert [u["destination"] for u in result["synced"]] == ["d0", "d1"]
+    assert s1.uploads == [f"{SELFBACKUP_PREFIX}app-20260301-000000.db.gz"]
+    assert s2.uploads == [f"{SELFBACKUP_PREFIX}app-20260301-000000.db.gz"]
+    db.close()
+
+
+def test_upload_rotates_beyond_30(tmp_path, monkeypatch):
+    preset = [f"selfbackup/app-202601{d:02d}-000000.db.gz" for d in range(1, 32)]  # 31 个白名单
+    preset.append("selfbackup/not-mine.txt")
+    st = FakeCloudStorage(preset=preset)
+    db, crypto = _cloud_env(tmp_path, [st])
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: st)
+    from app.services.sync_service import upload_self_backup
+
+    snap = tmp_path / "app-20260301-000000.db.gz"
+    snap.write_bytes(b"x")
+    upload_self_backup(db, crypto, snap)
+    # 白名单共 32(31 旧 + 1 新)→ 删最旧 2 个;非白名单不动
+    assert st.deletes == ["selfbackup/app-20260101-000000.db.gz",
+                          "selfbackup/app-20260102-000000.db.gz"]
+    db.close()
+
+
+def test_upload_dest_failure_continues(tmp_path, monkeypatch):
+    s1, s2 = FakeCloudStorage(fail_upload=True), FakeCloudStorage()
+    db, crypto = _cloud_env(tmp_path, [s1, s2])
+    queue = [s1, s2]
+    monkeypatch.setattr("app.services.sync_service.get_storage", lambda p: queue.pop(0))
+    from app.services.sync_service import upload_self_backup
+    from app.db.models import SystemLog
+
+    snap = tmp_path / "app-20260301-000000.db.gz"
+    snap.write_bytes(b"x")
+    result = upload_self_backup(db, crypto, snap)
+    assert result["errors"] and "upload boom" in result["errors"][0]["error"]
+    assert s2.uploads  # 第二目标仍上传
+    warn = db.query(SystemLog).filter(SystemLog.level == "warning",
+                                      SystemLog.source == "cloud").first()
+    assert warn is not None
+    db.close()
+
+
+def test_delete_snapshot_api_removes_local_and_cloud(authed, tmp_path, monkeypatch):
+    from app import config as app_config
+
+    monkeypatch.setattr(app_config.settings, "data_dir", tmp_path)
+    sdir = tmp_path / "selfbackup"; sdir.mkdir(exist_ok=True)
+    (sdir / "app-20260101-000000.db.gz").write_bytes(b"data")
+    seen = []
+    monkeypatch.setattr("app.routers.self_backup.delete_self_backup_cloud",
+                        lambda db, crypto, name: seen.append(name))
+    r = authed.delete("/api/v1/self-backup/app-20260101-000000.db.gz")
+    assert r.status_code == 200 and r.json() == {"deleted": "app-20260101-000000.db.gz"}
+    assert not (sdir / "app-20260101-000000.db.gz").exists()
+    assert seen == ["app-20260101-000000.db.gz"]
+
+
+def test_delete_snapshot_rejects_bad_name(authed):
+    for bad in ["..%2F..%2Fetc%2Fpasswd", "users.db", "pre-restore-20260101-000000.db"]:
+        assert authed.delete(f"/api/v1/self-backup/{bad}").status_code == 404, bad
+
+
+def test_run_api_triggers_cloud_upload(authed, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.routers.self_backup.upload_self_backup",
+                        lambda db, crypto, path: calls.append(Path(path).suffix))
+    def _boom(db, crypto, path):
+        raise RuntimeError("cloud down")
+
+    r = authed.post("/api/v1/self-backup/run?fmt=gz")
+    assert r.status_code == 200
+    r = authed.post("/api/v1/self-backup/run?fmt=sql")
+    assert r.status_code == 200
+    assert calls == [".gz", ".sql"]
+    # 上云失败不影响自备份结果
+    monkeypatch.setattr("app.routers.self_backup.upload_self_backup", _boom)
+    assert authed.post("/api/v1/self-backup/run?fmt=gz").status_code == 200
+
+
+def test_self_backup_daily_uploads(monkeypatch, tmp_path):
+    import asyncio
+    from types import SimpleNamespace
+    from app.db import session as _session
+    from app.services import scheduler as sched_mod
+    from app.services import self_backup as sb_mod
+    from app.services import sync_service as sync_mod
+    from app.core.crypto import Crypto
+    from cryptography.fernet import Fernet
+
+    fake_path = tmp_path / "app-20260301-000000.db.gz"
+    fake_path.write_bytes(b"x")
+
+    class _DB:
+        def add(self, *_): pass
+        def commit(self): pass
+        def close(self): pass
+
+    monkeypatch.setattr(sb_mod, "run_self_backup", lambda *a, **k: fake_path)
+    uploads = []
+
+    def _up(db, crypto, path):
+        uploads.append(Path(path).name)
+
+    monkeypatch.setattr(sync_mod, "upload_self_backup", _up)
+    monkeypatch.setattr(_session, "_SessionLocal", lambda: _DB())
+    crypto = Crypto(Fernet.generate_key())
+    asyncio.run(sched_mod.self_backup_daily(
+        SimpleNamespace(state=SimpleNamespace(crypto=crypto))))
+    assert uploads == [fake_path.name]
+
+    # 上云抛异常:仅日志,不炸每日任务
+    def _boom(db, crypto, path):
+        raise RuntimeError("cloud down")
+
+    monkeypatch.setattr(sync_mod, "upload_self_backup", _boom)
+    asyncio.run(sched_mod.self_backup_daily(
+        SimpleNamespace(state=SimpleNamespace(crypto=crypto))))

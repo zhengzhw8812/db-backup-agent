@@ -7,12 +7,13 @@ from app import config
 from app.db.session import get_db
 from app.deps import get_current_account
 from app.services.self_backup import NAME_RE, SQL_RE, list_snapshots, run_self_backup, export_sql_dump, stage_restore, self_backup_dir
+from app.services.sync_service import upload_self_backup, delete_self_backup_cloud
 
 router = APIRouter()
 
 
 @router.post("/self-backup/run")
-def trigger_self_backup(_request: Request, fmt: str = "gz", _=Depends(get_current_account)):
+def trigger_self_backup(request: Request, fmt: str = "gz", _=Depends(get_current_account)):
     from app.db import session as _session
 
     db = _session._SessionLocal()
@@ -23,6 +24,10 @@ def trigger_self_backup(_request: Request, fmt: str = "gz", _=Depends(get_curren
             out = run_self_backup(config.settings.data_dir, db=db)
         else:
             raise HTTPException(status_code=422, detail=f"不支持的格式:{fmt}")
+        try:
+            upload_self_backup(db, request.app.state.crypto, out)
+        except Exception:
+            pass  # 上云失败不影响自备份结果;upload_self_backup 内部已逐目标记日志
     except HTTPException:
         raise
     except Exception as exc:
@@ -30,6 +35,25 @@ def trigger_self_backup(_request: Request, fmt: str = "gz", _=Depends(get_curren
     finally:
         db.close()
     return {"name": out.name, "size": out.stat().st_size, "kind": fmt}
+
+
+@router.delete("/self-backup/{name}")
+def delete_self_backup(name: str, request: Request, _=Depends(get_current_account)):
+    """删除一份自备份快照:本地文件 + 各启用云目标上的副本(尽力)。"""
+    if not (NAME_RE.match(name) or SQL_RE.match(name)):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    path = self_backup_dir(config.settings.data_dir) / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    from app.db import session as _session
+
+    db = _session._SessionLocal()
+    try:
+        delete_self_backup_cloud(db, request.app.state.crypto, name)
+    finally:
+        db.close()
+    path.unlink(missing_ok=True)
+    return {"deleted": name}
 
 
 @router.get("/self-backup")

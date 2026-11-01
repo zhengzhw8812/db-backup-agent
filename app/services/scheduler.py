@@ -260,13 +260,18 @@ async def watchdog_check(app) -> None:
         db.close()
 
 async def self_backup_daily(app) -> None:
-    """每日 04:00 配置库自备份(VACUUM INTO 快照,保留 7 份)。"""
+    """每日 04:00 配置库自备份(VACUUM INTO 快照,保留 7 份)并上传云端。"""
     from app.config import settings
     from app.services.self_backup import run_self_backup
+    from app.services.sync_service import upload_self_backup
 
     db = _session._SessionLocal()
     try:
-        run_self_backup(settings.data_dir, db=db)
+        out = run_self_backup(settings.data_dir, db=db)
+        try:
+            upload_self_backup(db, app.state.crypto, out)
+        except Exception:
+            pass  # 上云失败不影响每日自备份;逐目标失败已记日志
     except Exception as exc:
         try:
             db.add(SystemLog(level="error", source="selfbackup",
