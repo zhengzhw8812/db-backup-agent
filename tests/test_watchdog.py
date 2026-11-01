@@ -40,7 +40,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(sched_mod, "AsyncIOScheduler", lambda: FakeSched())
     alerts = []
     monkeypatch.setattr("app.services.notifications.notify_generic",
-                        lambda db, crypto, *, kind, subject, content: alerts.append((kind, subject)) or {"email": False})
+                        lambda db, crypto, *, kind, subject, content: alerts.append((kind, subject)) or [])
     db = _session._SessionLocal()
     conn = DbConnection(name="web-db", type="pg", created_at=utcnow() - timedelta(days=10))
     db.add(conn); db.commit(); db.refresh(conn)
@@ -118,12 +118,12 @@ def test_watchdog_respects_toggle(tmp_path):
     init_engine(f"sqlite:///{tmp_path/'t.db'}")
     create_all()
     db = _session._SessionLocal()
-    db.add(NotificationConfig(email_enabled=True, notify_watchdog=False))
+    db.add(NotificationConfig(notify_watchdog=False))
     db.commit()
     sent = notif_mod.notify_generic(db, Crypto(Fernet.generate_key()), kind="watchdog",
                                     subject="x", content="y")
     db.close()
-    assert sent == {"email": False, "wechat": False}
+    assert sent == []
 
 
 def test_watchdog_registered_hourly(monkeypatch):
@@ -142,16 +142,17 @@ def test_watchdog_registered_hourly(monkeypatch):
 
 
 def test_watchdog_dedup_only_after_successful_send(env, monkeypatch):
-    """渠道已配置但发送失败(全 False)→ 不写去重键,下小时重试。"""
-    from app.db.models import NotificationConfig
+    """渠道已配置但发送全失败 → 不写去重键,下小时重试。"""
+    from app.db.models import NotificationChannel
     from app.services.settings_service import get_setting
 
     calls = []
     monkeypatch.setattr("app.services.notifications.notify_generic",
                         lambda db, crypto, *, kind, subject, content:
-                        calls.append((kind, subject)) or {"email": False, "wechat": False})
+                        calls.append((kind, subject)) or [{"channel_id": 1, "name": "e",
+                                                           "type": "email", "ok": False}])
     db, conn, sched, alerts = env
-    db.add(NotificationConfig(email_enabled=True, notify_watchdog=True))
+    db.add(NotificationChannel(type="email", name="e", enabled=True, config_json="{}"))
     db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
                         started_at=utcnow() - timedelta(days=3)))
     db.commit()
@@ -220,22 +221,23 @@ def test_watchdog_feishu_only_send_failure_retries(env, monkeypatch):
     import app.services.notifications as nm
     from app.services.settings_service import get_setting
 
+    from app.db.models import NotificationChannel
     db, conn, sched, alerts = env
-    db.add(NotificationConfig(feishu_enabled=True))
+    db.add(NotificationChannel(type="feishu", name="飞书", enabled=True, config_json="{}"))
     db.add(BackupRecord(connection_id=conn.id, trigger="scheduled", status="success",
                         started_at=utcnow() - timedelta(days=3)))
     db.commit()
 
-    # 飞书发送失败:分发器全 False → 不写去重键(下一小时重试)
+    # 飞书发送失败:ok 全 False → 不写去重键(下一小时重试)
     monkeypatch.setattr("app.services.notifications.notify_generic",
-                        lambda db, crypto, *, kind, subject, content: {"email": False, "wechat": False,
-                                                                        "feishu": False, "serverchan": False})
+                        lambda db, crypto, *, kind, subject, content:
+                        [{"channel_id": 1, "name": "飞书", "type": "feishu", "ok": False}])
     asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
     assert get_setting(db, f"watchdog:{sched.id}") is None
 
-    # 飞书发送成功:feishu=True → 写去重键
+    # 飞书发送成功 → 写去重键
     monkeypatch.setattr("app.services.notifications.notify_generic",
-                        lambda db, crypto, *, kind, subject, content: {"email": False, "wechat": False,
-                                                                        "feishu": True, "serverchan": False})
+                        lambda db, crypto, *, kind, subject, content:
+                        [{"channel_id": 1, "name": "飞书", "type": "feishu", "ok": True}])
     asyncio.run(sched_mod.watchdog_check(SimpleNamespace()))
     assert get_setting(db, f"watchdog:{sched.id}") is not None

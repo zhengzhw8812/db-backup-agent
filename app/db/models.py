@@ -153,6 +153,22 @@ class NotificationConfig(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class NotificationChannel(Base):
+    """通知渠道(v3.4.0):同一类型可配多条(多账号)。NotificationConfig 仅保留全局开关。
+
+    config_json:该类型非敏感配置 JSON(email: smtp_*/recipients;wechat: corp_id/agent_id);
+    secret_enc:敏感值 JSON 整包 Fernet 加密(email: password;wechat: secret;
+    feishu: webhook/sign;serverchan: sendkey)。"""
+    __tablename__ = "notification_channels"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    type: Mapped[str] = mapped_column(String(16), nullable=False)      # email|wechat|feishu|serverchan
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class AppSetting(Base):
     """通用 KV 设置(值为 JSON 字符串)。"""
     __tablename__ = "app_settings"

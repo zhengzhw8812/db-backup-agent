@@ -60,29 +60,31 @@ def test_verify_settings_get_put(authed):
 
 
 def test_notification_test_endpoint_per_channel(authed, monkeypatch):
-    """无任何渠道启用 → 400;仅邮件启用且成功 → email=true 其余 null。"""
+    """无启用渠道 → 400;单渠道成功 → 列表逐渠道返回 ok=True。"""
     from app.db import session as _session
-    from app.db.models import NotificationConfig
+    from app.db.models import NotificationChannel
     from app.services import notifications as nm
 
     r = authed.post("/api/v1/settings/notifications/test")
     assert r.status_code == 400
 
-    monkeypatch.setattr(nm, "_send_email", lambda cfg, subject, body, pw: None)
+    monkeypatch.setattr(nm, "_send_feishu", lambda secret, content: None)
     db = _session._SessionLocal()
-    db.add(NotificationConfig(email_enabled=True))
-    db.commit(); db.close()
+    ch = NotificationChannel(type="feishu", name="飞书", enabled=True, config_json="{}")
+    db.add(ch); db.commit(); db.close()
     r = authed.post("/api/v1/settings/notifications/test")
     assert r.status_code == 200
-    assert r.json() == {"email": True, "wechat": None, "feishu": None, "serverchan": None}
+    assert r.json() == [{"id": ch.id, "name": "飞书", "type": "feishu", "ok": True, "error": None}]
 
 
 def test_notification_test_endpoint_all_fail(authed):
     from app.db import session as _session
-    from app.db.models import NotificationConfig
+    from app.db.models import NotificationChannel
 
     db = _session._SessionLocal()
-    db.add(NotificationConfig(email_enabled=True, smtp_host="bad", smtp_port=1,
-                              smtp_from="a@b.c", recipients="x@y.z"))
+    # 真实发送路径:无 webhook 密文 → 发送失败
+    db.add(NotificationChannel(type="feishu", name="坏配置", enabled=True, config_json="{}"))
     db.commit(); db.close()
-    assert authed.post("/api/v1/settings/notifications/test").status_code == 400
+    r = authed.post("/api/v1/settings/notifications/test")
+    assert r.status_code == 400
+    assert r.json()["detail"][0]["ok"] is False

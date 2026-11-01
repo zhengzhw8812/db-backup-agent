@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db import session as _session
-from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection, NotificationConfig
+from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection, NotificationChannel
 from app.services.locks import has_running_backup
 from app.core.clock import utcnow
 
@@ -240,12 +240,11 @@ async def watchdog_check(app) -> None:
                                       subject=f"[备份失联] {name}",
                                       content=(f"数据库:{name}\n计划:{s.cron_expr}\n"
                                                f"情况:{overdue_desc},已超过 2× 计划周期未成功备份,请检查容器/调度器。"))
-                # 去重键只记录"真正送达"的告警:渠道配置缺失视为投递到空;
+                # 去重键只记录"真正送达"的告警:无启用渠道视为投递到空;
                 # 发送全失败 → 不写键,下一小时自动重试
-                cfg = db.query(NotificationConfig).first()
-                channels_configured = bool(cfg and (cfg.email_enabled or cfg.wechat_enabled
-                                     or cfg.feishu_enabled or cfg.serverchan_enabled))
-                if any(sent.values()) or not channels_configured:
+                channels_configured = db.query(NotificationChannel).filter(
+                    NotificationChannel.enabled.is_(True)).count() > 0
+                if any(r["ok"] for r in sent) or not channels_configured:
                     set_setting(db, f"watchdog:{s.id}", now.isoformat())
             except Exception as exc:
                 try:
