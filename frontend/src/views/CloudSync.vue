@@ -144,7 +144,8 @@ onMounted(load)
     </n-card>
   </n-space>
 
-  <n-modal v-model:show="showDest" preset="card" title="添加云存储目标(MinIO / S3 兼容)" style="width:520px">
+  <n-modal v-model:show="showDest" preset="card" title="添加云存储目标(MinIO / S3 兼容)"
+           style="width:520px" :mask-closable="false" :close-on-esc="false">
     <n-form label-placement="top">
       <n-form-item label="名称"><n-input v-model:value="destForm.name" /></n-form-item>
         <n-form-item label="类型">
@@ -193,7 +194,8 @@ onMounted(load)
     </n-form>
   </n-modal>
 
-  <n-modal v-model:show="showTarget" preset="card" title="添加同步规则" style="width:460px">
+  <n-modal v-model:show="showTarget" preset="card" title="添加同步规则"
+           style="width:460px" :mask-closable="false" :close-on-esc="false">
     <n-space vertical :size="12">
       <n-select v-model:value="selConn" :options="connOptions" placeholder="选数据库连接" filterable />
       <n-select v-model:value="selDest" :options="dests.map(d => ({ label: d.name, value: d.id }))" placeholder="选云目标" filterable />

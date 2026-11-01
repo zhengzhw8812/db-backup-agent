@@ -5,7 +5,7 @@ import EmptyState from '../components/EmptyState.vue'
 import DbTypeTag from '../components/DbTypeTag.vue'
 
 const { isMobile } = useBreakpoint()
-import { ref, h, onMounted } from 'vue'
+import { ref, computed, h, onMounted } from 'vue'
 import {
   NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
   NSelect, NSpace, NPopconfirm, NText, useMessage,
@@ -67,6 +67,10 @@ function selectAllDbs() {
   // 一键全选:把检测结果全部勾上
   form.value.db_names = dbOptions.value.map(o => o.value)
 }
+
+// 检测前置条件:主机+用户名+密码(编辑态密码留空表示沿用已存密码)
+const canDetect = computed(() =>
+  !!form.value.host && !!form.value.username && (!!form.value.password || !!editing.value))
 
 let detectTimer: number | undefined
 
@@ -173,7 +177,8 @@ onMounted(load)
       </template>
   </n-card>
 
-  <n-modal v-model:show="show" preset="card" :title="editing ? '编辑连接' : '新增连接'" style="width: 480px">
+  <n-modal v-model:show="show" preset="card" :title="editing ? '编辑连接' : '新增连接'"
+           style="width: 480px" :mask-closable="false" :close-on-esc="false">
     <n-form label-placement="top">
       <n-form-item label="名称"><n-input v-model:value="form.name" placeholder="例如:生产库" /></n-form-item>
       <n-form-item label="类型"><n-select v-model:value="form.type" :options="typeOptions" /></n-form-item>
@@ -181,6 +186,10 @@ onMounted(load)
         <n-form-item label="主机"><n-input v-model:value="form.host" placeholder="127.0.0.1" @blur="tryAutoDetect" /></n-form-item>
         <n-form-item label="端口"><n-input-number v-model:value="form.port" /></n-form-item>
       </n-space>
+      <n-form-item label="用户名"><n-input v-model:value="form.username" @blur="tryAutoDetect" /></n-form-item>
+      <n-form-item :label="editing ? '密码(留空表示不修改)' : '密码'">
+        <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="留空不改" @blur="tryAutoDetect" />
+      </n-form-item>
       <n-form-item label="数据库">
           <template v-if="form.type === 'pg'">
             <n-space align="center" style="width: 100%">
@@ -193,7 +202,7 @@ onMounted(load)
                 placeholder="填完账号后自动检测权限并列出库"
                 style="width: 260px"
               />
-              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :loading="loadingDbs" :disabled="!canDetect" @click="fetchDbs">检测</n-button>
               <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
@@ -208,7 +217,7 @@ onMounted(load)
                 placeholder="填完账号后自动检测权限并列出库"
                 style="width: 260px"
               />
-              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :loading="loadingDbs" :disabled="!canDetect" @click="fetchDbs">检测</n-button>
               <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
@@ -223,7 +232,7 @@ onMounted(load)
                 placeholder="填完账号后自动检测权限并列出库"
                 style="width: 260px"
               />
-              <n-button :loading="loadingDbs" @click="fetchDbs">重新检测</n-button>
+              <n-button :loading="loadingDbs" :disabled="!canDetect" @click="fetchDbs">检测</n-button>
               <n-button :disabled="!dbOptions.length" @click="selectAllDbs">全选</n-button>
             </n-space>
           </template>
@@ -231,10 +240,6 @@ onMounted(load)
             <n-input v-model:value="form.db_name" placeholder="SQLite 填库文件路径;Redis 留空即整实例" />
           </template>
         </n-form-item>
-      <n-form-item label="用户名"><n-input v-model:value="form.username" @blur="tryAutoDetect" /></n-form-item>
-      <n-form-item :label="editing ? '密码(留空表示不修改)' : '密码'">
-        <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="留空不改" @blur="tryAutoDetect" />
-      </n-form-item>
       <n-space justify="end">
         <n-button @click="show = false">取消</n-button>
         <n-button type="primary" @click="save">保存</n-button>
