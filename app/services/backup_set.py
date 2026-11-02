@@ -118,6 +118,18 @@ def dump_set(info: ConnectionInfo, db_names: list[str], set_dir: Path,
     raise ValueError(f"类型 {info.type} 不支持备份集")
 
 
+def _log_restore_terminal(db: Session, conn, rr: RestoreRecord) -> None:
+    """备份集恢复终态写系统日志:failed=error,partial=warning。"""
+    from app.services.backup_service import log_terminal_state
+
+    if rr.status == "failed":
+        log_terminal_state(db, level="error", source="restore",
+                           message=f"恢复到 {conn.name}(备份集) 失败", context=rr.error)
+    elif rr.status == "partial":
+        log_terminal_state(db, level="warning", source="restore",
+                           message=f"恢复到 {conn.name}(备份集) 部分库失败", context=rr.error)
+
+
 def restore_set_pg(db: Session, crypto: Crypto, conn,
                    set_file: Path, restore_record_id: int, backup_dir: Path,
                    reporter=None) -> RestoreRecord:
@@ -172,6 +184,7 @@ def restore_set_pg(db: Session, crypto: Crypto, conn,
         rr.finished_at = utcnow()
         db.commit(); db.refresh(rr)
         _report(rr.status, rr.error or "")
+        _log_restore_terminal(db, conn, rr)
         return rr
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -196,6 +209,7 @@ def restore_set_mysql(db: Session, crypto: Crypto, conn,
         rr.status = "failed"; rr.error = str(exc)
     rr.finished_at = utcnow()
     db.commit(); db.refresh(rr)
+    _log_restore_terminal(db, conn, rr)
     return rr
 
 
@@ -212,6 +226,7 @@ def restore_set_mongo(db: Session, crypto: Crypto, conn,
         rr.status = "failed"; rr.error = str(exc)
     rr.finished_at = utcnow()
     db.commit(); db.refresh(rr)
+    _log_restore_terminal(db, conn, rr)
     return rr
 
 

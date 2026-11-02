@@ -79,7 +79,11 @@ def mount_destination(dest: CloudDestination, crypto: Crypto) -> None:
 def unmount_destination(dest_id: int) -> None:
     mp = mount_point(dest_id)
     if os.path.ismount(mp):
-        subprocess.run(["umount", "-f", str(mp)], capture_output=True, timeout=60)
+        r = subprocess.run(["umount", "-f", str(mp)], capture_output=True, timeout=60)
+        if r.returncode != 0 and os.path.ismount(mp):
+            # 静默失败会让"已卸载"成为假象(挂载点 busy/NFS 失联),调用方无从反馈
+            stderr = (r.stderr or b"").decode(errors="replace")[:200]
+            raise RuntimeError(f"卸载失败(rc={r.returncode}):{stderr}")
     try:
         mp.rmdir()
     except OSError:

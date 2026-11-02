@@ -108,13 +108,14 @@ def update_destination(dest_id: int, payload: CloudDestinationCreate, request: R
 
         if remount_needed:
             try:
-                mount_service.unmount_destination(d.id)  # 旧挂载点参数可能已失效,幂等
-            except Exception:
-                pass
+                mount_service.unmount_destination(d.id)  # 旧挂载点参数可能已失效
+            except Exception as exc:
+                warning = (f"新配置已保存,但旧挂载未能卸载({exc}),"
+                           "新配置尚未生效;重启容器后按新配置挂载")
         try:
             mount_service.mount_destination(d, crypto)  # 幂等:已挂载则跳过
         except Exception as exc:
-            warning = f"配置已保存,但重新挂载失败:{exc};容器重启时会自动重试"
+            warning = warning or f"配置已保存,但重新挂载失败:{exc};容器重启时会自动重试"
         mounted = mount_service.is_mounted(d.id)
     db.commit(); db.refresh(d)
     out = CloudDestinationOut.model_validate(d)
@@ -150,7 +151,11 @@ def delete_destination(dest_id: int, db: Session = Depends(get_db), _=Depends(ge
     if d.provider in ("nfs", "smb"):
         from app.services import mount_service
 
-        mount_service.unmount_destination(d.id)
+        try:
+            mount_service.unmount_destination(d.id)
+        except Exception as exc:
+            raise HTTPException(status_code=400,
+                                detail=f"卸载失败,目标可能正被备份任务使用:{exc}")
     db.delete(d); db.commit()
 
 

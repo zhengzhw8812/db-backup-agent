@@ -133,3 +133,21 @@ def _session_db(tmp_path):
     init_engine(f"sqlite:///{tmp_path/'t.db'}")
     create_all()
     return _session._SessionLocal()
+
+
+def test_unmount_failure_when_still_mounted_raises(tmp_path, monkeypatch):
+    """umount 返回非零且挂载点仍在 → 抛错(不再静默),调用方才能如实反馈。"""
+    import subprocess as _sp
+    from app.services import mount_service as ms
+
+    monkeypatch.setattr(ms.os.path, "ismount", lambda p: True)
+
+    class FakeProc:
+        returncode = 1
+        stderr = b"umount: /mnt/x: target is busy"
+    monkeypatch.setattr(ms, "subprocess", type("S", (), {"run": staticmethod(lambda *a, **k: FakeProc())}))
+    try:
+        ms.unmount_destination(7)
+        raise AssertionError("应当抛 RuntimeError")
+    except RuntimeError as e:
+        assert "busy" in str(e)

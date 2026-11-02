@@ -233,3 +233,33 @@ def test_dump_set_dispatch_mysql_uses_final_name(tmp_path, monkeypatch):
     with gzip.open(out) as f:
         assert f.read().decode() == "-- dump"
     assert "--databases" in " ".join(captured["argv"])
+
+
+def test_restore_set_failure_writes_system_log(tmp_path, monkeypatch):
+    """备份集恢复失败写入系统日志(多库恢复是排查刚需)。"""
+    import gzip as _gz
+
+    import app.services.backup_set as bs
+    from app.db.models import SystemLog
+
+    class BoomAdapter:
+        def restore(self, info, src, *, is_cancelled=None): raise RuntimeError("mysql closed")
+    monkeypatch.setattr(bs, "get_adapter", lambda t: BoomAdapter())
+
+    set_file = tmp_path / "mysql_1_1.set.sql.gz"
+    with _gz.open(set_file, "wb") as f:
+        f.write(b"-- dump")
+
+    db, crypto, conn, bdir = _env(tmp_path)
+    rec = BackupRecord(connection_id=conn.id, trigger="manual", status="success",
+                       file_path=set_file.name, started_at=utcnow())
+    db.add(rec); db.commit(); db.refresh(rec)
+    rr = RestoreRecord(backup_record_id=rec.id, target_connection_id=conn.id,
+                       status="running", started_at=utcnow())
+    db.add(rr); db.commit(); db.refresh(rr)
+
+    out = bs.restore_set_mysql(db, crypto, conn, set_file, rr.id, tmp_path)
+    assert out.status == "failed"
+    row = db.query(SystemLog).filter(SystemLog.source == "restore", SystemLog.level == "error").first()
+    assert row is not None and "mysql closed" in (row.context or "")
+    db.close()
