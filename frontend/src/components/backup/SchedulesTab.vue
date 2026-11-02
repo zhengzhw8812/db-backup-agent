@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 备份计划 Tab:数据由壳页面传入;行内「立即执行」emit 给壳执行并跳转文件 Tab
 import { useBreakpoint } from '../../composables/useBreakpoint'
+import { parseTs } from '../../composables/useRelativeTime'
 
 const { isMobile } = useBreakpoint()
 import { ref, h } from 'vue'
@@ -58,7 +59,7 @@ const columns: DataTableColumns<Schedule> = [
   { title: '连接', key: 'connection_id', render: r => connLabel(r.connection_id) },
   { title: 'Cron 表达式', key: 'cron_expr', render: r => h(NTag, { size: 'small', bordered: false }, { default: () => r.cron_expr }) },
   { title: '保留(天)', key: 'retention_days' },
-  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? h('span', { title: r.next_run_at }, new Date(r.next_run_at).toLocaleString()) : '—' },
+  { title: '下次运行', key: 'next_run_at', render: r => r.next_run_at ? h('span', { title: r.next_run_at }, parseTs(r.next_run_at).toLocaleString()) : '—' },
   { title: '启用', key: 'enabled', render: r => h(NSwitch, { value: r.enabled, 'onUpdate:value': (v: boolean) => toggle(r, v) }) },
   { title: '操作', key: 'actions', render: r => h(NSpace, { size: 'small' }, {
       default: () => [
@@ -87,7 +88,7 @@ const columns: DataTableColumns<Schedule> = [
       <n-card v-for="s in schedules" :key="s.id" class="mcard" :title="connLabel(s.connection_id)" size="small">
         <div class="mrow"><span class="mlabel">Cron</span><n-tag size="small" :bordered="false">{{ s.cron_expr }}</n-tag></div>
         <div class="mrow"><span class="mlabel">保留</span><span>{{ s.retention_days }} 天</span></div>
-        <div class="mrow"><span class="mlabel">下次运行</span><span>{{ s.next_run_at ? new Date(s.next_run_at).toLocaleString() : '—' }}</span></div>
+        <div class="mrow"><span class="mlabel">下次运行</span><span>{{ s.next_run_at ? parseTs(s.next_run_at).toLocaleString() : '—' }}</span></div>
         <div class="mrow"><span class="mlabel">启用</span><n-switch :value="s.enabled" @update:value="(v: boolean) => toggle(s, v)" /></div>
         <div class="mactions">
           <n-button size="large" type="primary" ghost @click="emit('run-now', s.connection_id)">立即执行</n-button>

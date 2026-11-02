@@ -1,5 +1,11 @@
 import { ref } from 'vue'
 
+/** 后端时间为 naive UTC ISO(无时区标记):补 Z 后解析,显示为浏览器本地时区。
+ * 已带 offset/Z 的串(历史数据可能存在)原样解析,不做双补。 */
+export function parseTs(iso: string): Date {
+  return new Date(/[zZ]|[+-]\d\d:?(\d\d)?$/.test(iso) ? iso : iso + "Z")
+}
+
 function fmt(date: Date): string {
   const diff = (Date.now() - date.getTime()) / 1000
   if (diff < 60) return "刚刚"
@@ -14,7 +20,7 @@ export function useRelativeTime(iso: string | null | undefined): string {
   const text = ref("")
   function update() {
     if (!iso) { text.value = "—"; return }
-    const d = new Date(iso)
+    const d = parseTs(iso)
     text.value = isNaN(d.getTime()) ? (iso ?? "—") : fmt(d)
   }
   update()
@@ -23,13 +29,13 @@ export function useRelativeTime(iso: string | null | undefined): string {
 
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "—"
-  const d = new Date(iso)
+  const d = parseTs(iso)
   if (isNaN(d.getTime())) return iso
   return fmt(d)
 }
 
 export function fullTime(iso: string | null | undefined): string {
   if (!iso) return ""
-  const d = new Date(iso)
+  const d = parseTs(iso)
   return isNaN(d.getTime()) ? iso : d.toLocaleString("zh-CN")
 }

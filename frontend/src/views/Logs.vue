@@ -6,6 +6,7 @@ import { NCard, NDataTable, NTag, NButton, NSpace, NSelect, useMessage } from 'n
 import type { DataTableColumns } from 'naive-ui'
 import * as logsApi from '../api/logs'
 import type { SystemLog } from '../api/logs'
+import { parseTs } from '../composables/useRelativeTime'
 
 const msg = useMessage()
 const data = ref<SystemLog[]>([])
@@ -27,7 +28,7 @@ const tag = (l: string) => {
   return h(NTag, { size: 'small', bordered: false, type: m[l] || 'default' }, { default: () => l })
 }
 const columns: DataTableColumns<SystemLog> = [
-  { title: '时间', key: 'created_at', render: r => new Date(r.created_at).toLocaleString() },
+  { title: '时间', key: 'created_at', render: r => parseTs(r.created_at).toLocaleString() },
   { title: '级别', key: 'level', render: r => tag(r.level) },
   { title: '来源', key: 'source' },
   { title: '消息', key: 'message', ellipsis: { tooltip: true } },
