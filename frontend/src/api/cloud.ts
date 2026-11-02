@@ -12,6 +12,8 @@ export interface CloudDestination {
   enabled: boolean
   created_at: string
   mounted: boolean | null
+  warning?: string | null
+  mount_config?: string | null
 }
 export interface SyncTarget {
   id: number
@@ -23,6 +25,11 @@ export interface BackupFile { id: number; connection_id: number; status: string;
 
 export const listDestinations = () => client.get<CloudDestination[]>('/cloud-destinations')
 export const createDestination = (data: Record<string, unknown>) => client.post<CloudDestination>('/cloud-destinations', data)
+export const updateDestination = (id: number, data: Record<string, unknown>) =>
+  client.put<CloudDestination>(`/cloud-destinations/${id}`, data)
+/** 保存前测试:用表单临时凭据直连验证(仅 s3) */
+export const testDestinationDraft = (data: Record<string, unknown>) =>
+  client.post<{ ok: boolean }>('/cloud-destinations/test', data)
 export const deleteDestination = (id: number) => client.delete(`/cloud-destinations/${id}`)
 export const testDestination = (id: number) => client.post(`/cloud-destinations/${id}/test`)
 export const listTargets = () => client.get<SyncTarget[]>('/sync-targets')

@@ -19,12 +19,15 @@ const connOptions = ref<{ label: string; value: number }[]>([])
 const backupOptions = ref<{ label: string; value: number }[]>([])
 const showDest = ref(false)
 const showTarget = ref(false)
+const editingDest = ref<CloudDestination | null>(null)
+const draftTesting = ref(false)
 const selConn = ref<number | null>(null)
 const selDest = ref<number | null>(null)
 const selBackup = ref<number | null>(null)
 
-const destForm = ref({ name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true,
+const emptyDestForm = () => ({ name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true,
   mount: { server: '', export: '', version: 'nfs4', share: '', domain: '', username: '' }, mount_password: '' })
+const destForm = ref(emptyDestForm())
 const isShare = computed(() => destForm.value.provider === 'nfs' || destForm.value.provider === 'smb')
 
 async function load() {
@@ -35,13 +38,50 @@ async function load() {
     backupOptions.value = b.data.filter(x => x.status === 'success').map(x => ({ label: `#${x.id}`, value: x.id }))
   } catch (e: any) { msg.error('加载云同步数据失败') }
 }
+function openDestAdd() {
+  editingDest.value = null
+  destForm.value = emptyDestForm()
+  showDest.value = true
+}
+
+function openDestEdit(row: CloudDestination) {
+  editingDest.value = row
+  let mount = { ...emptyDestForm().mount }
+  if (row.mount_config) {
+    try { mount = { ...mount, ...JSON.parse(row.mount_config) } } catch { /* 保持默认 */ }
+  }
+  destForm.value = {
+    name: row.name, provider: row.provider, endpoint: row.endpoint, region: row.region || '',
+    bucket: row.bucket, access_key: '', secret: '', prefix: row.prefix, secure: row.secure,
+    enabled: row.enabled, mount, mount_password: '',
+  }
+  showDest.value = true
+}
+
 async function saveDest() {
   try {
-    await cloudApi.createDestination({ ...destForm.value, region: destForm.value.region || null })
-    msg.success('已添加'); showDest.value = false; destForm.value = { name: '', provider: 's3', endpoint: '', region: '', bucket: '', access_key: '', secret: '', prefix: '', secure: false, enabled: true,
-  mount: { server: '', export: '', version: 'nfs4', share: '', domain: '', username: '' }, mount_password: '' }
+    const body = { ...destForm.value, region: destForm.value.region || null }
+    if (editingDest.value) {
+      const r = await cloudApi.updateDestination(editingDest.value.id, body)
+      if (r.data.warning) msg.warning(r.data.warning, { duration: 10000, closable: true })
+      else msg.success('已保存')
+    } else {
+      await cloudApi.createDestination(body)
+      msg.success('已添加')
+    }
+    showDest.value = false; destForm.value = emptyDestForm()
     await load()
-  } catch (e: any) { msg.error(e.response?.data?.detail || '失败') }
+  } catch (e: any) { msg.error(e.response?.data?.detail || '保存失败') }
+}
+
+async function testDestDraft() {
+  draftTesting.value = true
+  try {
+    await cloudApi.testDestinationDraft({ ...destForm.value, region: destForm.value.region || null })
+    msg.success('连接成功,配置可用')
+  } catch (e: any) {
+    msg.error(String(e.response?.data?.detail || '测试失败'), { duration: 8000, closable: true })
+  } finally { draftTesting.value = false }
 }
 async function testDest(id: number) {
   try { await cloudApi.testDestination(id); msg.success('连接成功') }
@@ -80,6 +120,7 @@ const destCols: DataTableColumns<CloudDestination> = [
   { title: 'HTTPS', key: 'secure', render: r => h(NTag, { size: 'small', bordered: false, type: r.secure ? 'success' : 'warning' }, { default: () => r.secure ? '是' : '否' }) },
   { title: '操作', key: 'a', render: r => h(NSpace, null, { default: () => [
     h(NButton, { size: 'small', onClick: () => testDest(r.id) }, { default: () => '测试' }),
+        h(NButton, { size: 'small', onClick: () => openDestEdit(r) }, { default: () => '编辑' }),
     h(NPopconfirm, { onPositiveClick: () => rmDest(r.id) }, { trigger: () => h(NButton, { size: 'small', type: 'error', ghost: true }, { default: () => '删除' }), default: () => '确认删除?' }),
   ] }) },
 ]
@@ -97,11 +138,11 @@ onMounted(load)
   <PageHeader title="云存储" description="备份目的地与同步规则" /><n-space vertical :size="16">
     <n-card title="云存储目标" :bordered="false">
       <template #header-extra>
-        <n-button type="primary" @click="showDest = true">+ 添加</n-button>
+        <n-button type="primary" @click="openDestAdd()">+ 添加</n-button>
       </template>
       <template v-if="!isMobile">
       <n-data-table v-if="dests.length" :columns="destCols" :data="dests" :bordered="false" size="small" striped />
-          <EmptyState v-else icon="☁️" text="还没有云存储目的地" action-text="+ 新增目的地" @action="showDest = true" />
+          <EmptyState v-else icon="☁️" text="还没有云存储目的地" action-text="+ 新增目的地" @action="openDestAdd()" />
       </template>
 <template v-else>
         <n-card v-for="d in dests" :key="d.id" class="mcard" :title="d.name" size="small">
@@ -112,6 +153,7 @@ onMounted(load)
           <div class="mrow" v-if="d.bucket"><span class="mlabel">桶</span><span>{{ d.bucket }}{{ d.prefix ? '/' + d.prefix : '' }}</span></div>
           <div class="mactions">
             <n-button size="large" @click="testDest(d.id)">{{ d.provider === 'nfs' || d.provider === 'smb' ? '探针' : '测试' }}</n-button>
+            <n-button size="large" @click="openDestEdit(d)">编辑</n-button>
             <n-popconfirm @positive-click="rmDest(d.id)"><template #trigger><n-button size="large" type="error" ghost>删除</n-button></template>确认删除?</n-popconfirm>
           </div>
         </n-card>
@@ -144,12 +186,12 @@ onMounted(load)
     </n-card>
   </n-space>
 
-  <n-modal v-model:show="showDest" preset="card" title="添加云存储目标(MinIO / S3 兼容)"
-           style="width:520px" :mask-closable="false" :close-on-esc="false">
+  <n-modal v-model:show="showDest" preset="card" :title="editingDest ? '编辑云存储目标' : '添加云存储目标(MinIO / S3 兼容)'"
+           style="width:560px" :mask-closable="false" :close-on-esc="false">
     <n-form label-placement="top">
       <n-form-item label="名称"><n-input v-model:value="destForm.name" /></n-form-item>
         <n-form-item label="类型">
-          <n-radio-group v-model:value="destForm.provider">
+          <n-radio-group v-model:value="destForm.provider" :disabled="!!editingDest">
             <n-radio-button value="s3">S3 / MinIO</n-radio-button>
             <n-radio-button value="nfs">NFS</n-radio-button>
             <n-radio-button value="smb">SMB</n-radio-button>
@@ -173,13 +215,17 @@ onMounted(load)
           <n-form-item label="密码"><n-input v-model:value="destForm.mount_password" type="password" show-password-on="click" /></n-form-item>
         </template>
         <template v-if="destForm.provider === 's3'">
-      <n-space>
-        <n-form-item label="Endpoint (host:port)"><n-input v-model:value="destForm.endpoint" placeholder="localhost:9000" /></n-form-item>
-        <n-form-item label="桶名"><n-input v-model:value="destForm.bucket" /></n-form-item>
+      <n-text depth="3" style="font-size:12px;line-height:1.6">
+        Endpoint 填 host:port(不要带 https:// 前缀):MinIO/自建填「地址:9000」,MinIO 通常关 HTTPS;
+        阿里云 OSS 填 oss-cn-beijing.aliyuncs.com、AWS S3 填 s3.amazonaws.com 并开 HTTPS、补区域。
+      </n-text>
+      <n-space style="margin-top:8px">
+        <n-form-item label="Endpoint (host:port)"><n-input v-model:value="destForm.endpoint" placeholder="localhost:9000(不带 http://)" /></n-form-item>
+        <n-form-item label="桶名"><n-input v-model:value="destForm.bucket" placeholder="bucket-name" /></n-form-item>
       </n-space>
       <n-space>
-        <n-form-item label="Access Key"><n-input v-model:value="destForm.access_key" /></n-form-item>
-        <n-form-item label="Secret"><n-input v-model:value="destForm.secret" type="password" show-password-on="click" /></n-form-item>
+        <n-form-item :label="editingDest ? 'Access Key(留空不改)' : 'Access Key'"><n-input v-model:value="destForm.access_key" /></n-form-item>
+        <n-form-item :label="editingDest ? 'Secret(留空不改)' : 'Secret'"><n-input v-model:value="destForm.secret" type="password" show-password-on="click" /></n-form-item>
       </n-space>
       <n-space>
         <n-form-item label="前缀"><n-input v-model:value="destForm.prefix" placeholder="(可选)" /></n-form-item>
@@ -190,7 +236,12 @@ onMounted(load)
         <n-form-item label="启用"><n-switch v-model:value="destForm.enabled" /></n-form-item>
       </n-space>
       </template>
-      <n-button type="primary" block @click="saveDest">保存</n-button>
+      <n-space vertical :size="8">
+        <n-button v-if="destForm.provider === 's3'" block :loading="draftTesting" @click="testDestDraft">
+          测试连接(用上方填写的凭据,不必先保存)
+        </n-button>
+        <n-button type="primary" block @click="saveDest">保存</n-button>
+      </n-space>
     </n-form>
   </n-modal>
 
