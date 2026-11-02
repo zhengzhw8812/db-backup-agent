@@ -58,8 +58,31 @@ class S3StorageAdapter:
                 for o in objs]
 
     def test(self, cfg: CloudConfig) -> None:
-        if not self._with_retry(lambda: self._client(cfg).bucket_exists(cfg.bucket)):
-            raise ValueError(f"存储桶不存在: {cfg.bucket}")
+        try:
+            ok = self._with_retry(lambda: self._client(cfg).bucket_exists(cfg.bucket))
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(self._explain_test_failure(exc)) from exc
+        if not ok:
+            raise ValueError(f"存储桶不存在: {cfg.bucket}。请检查桶名拼写与 Region")
+
+    @staticmethod
+    def _explain_test_failure(exc: Exception) -> str:
+        """把 SDK 原始异常翻译成可操作的中文指引。"""
+        msg = f"{type(exc).__name__}: {exc}"
+        text = str(exc).lower()
+        if "ssl" in text or "certificate" in text:
+            return (f"TLS 不匹配:{msg}。请核对 HTTPS 开关与本机端口"
+                    "(HTTPS 一般是 443;MinIO/S3 兼容存储的 9000 等端口通常应关闭 HTTPS)")
+        if any(k in text for k in ("connection", "timeout", "maxretry", "refused", "unreachable", "resolve")):
+            return (f"连不上:{msg}。请检查 Endpoint 格式(应为 host:port,不带 http:// 前缀)、"
+                    "端口是否正确(MinIO 常用 9000)以及网络可达性")
+        if any(k in text for k in ("accessdenied", "invalidaccesskeyid", "signature", "403", "invalidtoken")):
+            return f"认证失败:{msg}。请检查 Access Key / Secret Key 是否正确,以及该账号是否有此桶的访问权限"
+        if "nosuchbucket" in text or "bucket" in text:
+            return f"桶不存在:{msg}。请检查桶名拼写与 Region 设置"
+        return f"连接失败:{msg}。请检查 Endpoint / 桶名 / 凭据 / 网络"
 
 
 register_storage(S3StorageAdapter())

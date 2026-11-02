@@ -40,6 +40,7 @@ class CloudDestinationOut(BaseModel):
     enabled: bool
     mount_config: str | None = None
     mounted: bool | None = None    # nfs/smb 专用;s3 为 null
+    warning: str | None = None    # 编辑时重挂载失败等非致命提示
     created_at: datetime
     # 注意:不含 access_key / secret / mount_password —— 永不回传
 

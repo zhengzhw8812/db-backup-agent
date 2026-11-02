@@ -68,6 +68,80 @@ def create_destination(payload: CloudDestinationCreate, request: Request,
     return d
 
 
+@router.put("/cloud-destinations/{dest_id}", response_model=CloudDestinationOut)
+def update_destination(dest_id: int, payload: CloudDestinationCreate, request: Request,
+                       db: Session = Depends(get_db), _=Depends(get_current_account)):
+    """编辑云目标:凭据(access_key/secret/mount_password)留空=保留已存密文;
+    provider 不允许变更;s3↔nfs 属不同类型目标,改型请删除后新建。
+    nfs/smb 挂载参数变化时重挂;重挂失败不回滚(配置保留,启动时自动重试)。"""
+    d = db.get(CloudDestination, dest_id)
+    if d is None:
+        raise HTTPException(status_code=404, detail="云目标不存在")
+    if payload.provider != d.provider:
+        raise HTTPException(status_code=422, detail="云目标类型不可修改;如需更换请删除后新建")
+    crypto = request.app.state.crypto
+
+    new_mount_json = payload.mount.model_dump_json(exclude_none=True) if payload.mount else None
+    remount_needed = d.provider in ("nfs", "smb") and new_mount_json != d.mount_config
+
+    d.name = payload.name
+    d.endpoint = payload.endpoint
+    d.region = payload.region
+    d.bucket = payload.bucket
+    d.prefix = payload.prefix
+    d.secure = payload.secure
+    d.enabled = payload.enabled
+    if new_mount_json is not None:
+        d.mount_config = new_mount_json
+    # 凭据:非空才覆盖(避免空串清掉已存密文)
+    if payload.access_key:
+        d.access_key_enc = crypto.encrypt(payload.access_key)
+    if payload.secret:
+        d.secret_enc = crypto.encrypt(payload.secret)
+    if payload.mount_password:
+        d.mount_password_enc = crypto.encrypt(payload.mount_password)
+
+    warning = None
+    mounted = None
+    if d.provider in ("nfs", "smb"):
+        from app.services import mount_service
+
+        if remount_needed:
+            try:
+                mount_service.unmount_destination(d.id)  # 旧挂载点参数可能已失效,幂等
+            except Exception:
+                pass
+        try:
+            mount_service.mount_destination(d, crypto)  # 幂等:已挂载则跳过
+        except Exception as exc:
+            warning = f"配置已保存,但重新挂载失败:{exc};容器重启时会自动重试"
+        mounted = mount_service.is_mounted(d.id)
+    db.commit(); db.refresh(d)
+    out = CloudDestinationOut.model_validate(d)
+    out.mounted = mounted
+    out.warning = warning
+    return out
+
+
+@router.post("/cloud-destinations/test")
+def test_destination_draft(payload: CloudDestinationCreate,
+                           _=Depends(get_current_account)):
+    """保存前测试:用表单里的临时凭据直连验证(不落库)。目前支持 s3;
+    NFS/SMB 挂载依赖落库 id,请保存后用列表「探针」验证。"""
+    if payload.provider != "s3":
+        raise HTTPException(status_code=400, detail="共享存储(NFS/SMB)请保存后用列表的测试/探针验证")
+    cfg = CloudConfig(
+        endpoint=payload.endpoint, access_key=payload.access_key,
+        secret_key=payload.secret, bucket=payload.bucket,
+        region=payload.region, secure=payload.secure, prefix=payload.prefix,
+    )
+    try:
+        get_storage(payload.provider).test(cfg)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True}
+
+
 @router.delete("/cloud-destinations/{dest_id}", status_code=204)
 def delete_destination(dest_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
     d = db.get(CloudDestination, dest_id)
