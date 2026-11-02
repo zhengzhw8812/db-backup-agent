@@ -13,7 +13,7 @@ from app.schemas.job import JobRunResponse, JobOut, BackupRunRequest
 from app.services.locks import has_running_backup
 from app.services.backup_service import enqueue_backup
 from app.workers.progress import request_cancel
-from app.routers._sse import event_stream
+from app.routers._sse import SSE_HEADERS, event_stream
 from app.core.clock import utcnow
 
 router = APIRouter()
@@ -77,4 +77,4 @@ def cancel(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_
 async def events(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
     if db.get(BackupRecord, record_id) is None:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return StreamingResponse(event_stream(record_id, "job"), media_type="text/event-stream")
+    return StreamingResponse(event_stream(record_id, "job"), media_type="text/event-stream", headers=SSE_HEADERS)

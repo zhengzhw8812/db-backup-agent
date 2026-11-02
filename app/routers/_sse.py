@@ -3,6 +3,9 @@ import json
 
 TERMINAL = ("success", "failed", "cancelled")
 
+# SSE 防缓冲:X-Accel-Buffering: no 让 nginx 系反代关闭攒批;no-cache 防中间缓存
+SSE_HEADERS = {"X-Accel-Buffering": "no", "Cache-Control": "no-cache"}
+
 
 def _read_status(record_id: int, kind: str) -> str | None:
     """读任务当前状态(kind: job→BackupRecord / restore→RestoreRecord)。

@@ -12,7 +12,7 @@ from app.deps import get_current_account
 from app.schemas.restore import RestoreRequest, RestoreRunResponse, RestoreOut
 from app.services.locks import has_running_restore
 from app.workers.progress import request_cancel
-from app.routers._sse import event_stream
+from app.routers._sse import SSE_HEADERS, event_stream
 from app.core.clock import utcnow
 
 router = APIRouter()
@@ -75,4 +75,4 @@ def cancel_restore(record_id: int, db: Session = Depends(get_db), _=Depends(get_
 async def restore_events(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_account)):
     if db.get(RestoreRecord, record_id) is None:
         raise HTTPException(status_code=404, detail="恢复任务不存在")
-    return StreamingResponse(event_stream(record_id, "restore"), media_type="text/event-stream")
+    return StreamingResponse(event_stream(record_id, "restore"), media_type="text/event-stream", headers=SSE_HEADERS)

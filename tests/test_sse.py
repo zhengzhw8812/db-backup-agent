@@ -122,3 +122,27 @@ def test_events_404_for_missing_record(authed):
     """记录不存在:404,而不是挂起等待永远不会来的事件。"""
     assert authed.get("/api/v1/jobs/999999/events").status_code == 404
     assert authed.get("/api/v1/restore/999999/events").status_code == 404
+
+
+def test_events_response_has_no_buffering_headers(authed, monkeypatch):
+    """SSE 响应必须带防缓冲头:反代(nginx 系)识别 X-Accel-Buffering: no 后不攒批。"""
+    from app.db import session as _session
+    from app.db.models import DbConnection, BackupRecord, RestoreRecord
+    from app.core.clock import utcnow
+
+    db = _session._SessionLocal()
+    conn = DbConnection(name="c", type="pg"); db.add(conn); db.commit(); db.refresh(conn)
+    b = BackupRecord(connection_id=conn.id, trigger="manual", status="success", started_at=utcnow())
+    db.add(b); db.commit(); db.refresh(b)
+    r = RestoreRecord(backup_record_id=b.id, target_connection_id=conn.id,
+                      status="success", started_at=utcnow())
+    db.add(r); db.commit(); db.refresh(r)
+    db.close()
+
+    for url in (f"/api/v1/jobs/{b.id}/events", f"/api/v1/restore/{r.id}/events"):
+        resp = authed.get(url, headers={"Accept-Encoding": "gzip"})
+        assert resp.status_code == 200
+        assert resp.headers.get("X-Accel-Buffering") == "no", url
+        assert resp.headers.get("Cache-Control") == "no-cache", url
+        # 应用层不压缩 SSE(Starlette 新版已排除,断言防回归)
+        assert "content-encoding" not in resp.headers, url

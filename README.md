@@ -79,6 +79,21 @@ docker-compose up -d
 
 > ⚠️ **备份密钥**: `data/keys/keys.json` 用于加密数据库连接密码,请连同 `data/` 一起备份。丢失后将无法解密已保存的连接凭据。
 
+## 🔀 反向代理部署(SSE 实时进度)
+
+经 nginx 系反代访问时,需关闭对 `/api/v1/*/events` 的响应缓冲,否则备份进度会攒批不实时(应用已自动下发 `X-Accel-Buffering: no`,多数情况下无需额外配置)。若仍不实时,在代理层补:
+
+```nginx
+location /api/v1/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_buffering off;          # 关键:SSE 不攒批
+    proxy_read_timeout 3600s;     # 长连接备份期间不掐断
+}
+```
+
+其他代理等价配置:Caddy/Traefik 默认不缓冲流式响应,通常无需处理。
+
 ## 🛠️ 本地开发
 
 后端(FastAPI + SQLAlchemy + APScheduler + arq)、前端(Vue 3 + Naive UI + Vite)的目录结构、开发命令与备份数据流说明,见 [AGENTS.md](AGENTS.md)。
