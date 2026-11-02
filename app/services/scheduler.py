@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db import session as _session
 from app.db.models import Schedule, BackupRecord, SystemLog, DbConnection, NotificationChannel
 from app.services.locks import has_running_backup
+from app.config import settings
 from app.core.clock import utcnow
 
 
@@ -50,6 +51,11 @@ async def run_scheduled_backup(app, connection_id: int, schedule_id: int) -> Non
         raise
 
 
+def _cron_trigger_from(expr: str) -> CronTrigger:
+    """cron 表达式按 settings.app_tz 解释(默认北京时间)。"""
+    return CronTrigger.from_crontab(expr, timezone=settings.app_tz)
+
+
 class SchedulerService:
     def __init__(self, app):
         self.app = app
@@ -61,7 +67,7 @@ class SchedulerService:
     def _add(self, schedule: Schedule) -> None:
         self._sched.add_job(
             run_scheduled_backup,
-            CronTrigger.from_crontab(schedule.cron_expr),
+            _cron_trigger_from(schedule.cron_expr),
             args=[self.app, schedule.connection_id, schedule.id],
             id=self._job_id(schedule.id),
             replace_existing=True,
@@ -85,10 +91,10 @@ class SchedulerService:
             self._sched.add_job(watchdog_check, IntervalTrigger(hours=1),
                                 args=[self.app], id="watchdog_check", replace_existing=True)
             self._sched.add_job(self_backup_daily,
-                                CronTrigger(hour=4, minute=0),
+                                CronTrigger(hour=4, minute=0, timezone=settings.app_tz),
                                 args=[self.app], id="self_backup_daily", replace_existing=True)
             self._sched.add_job(auto_verify_weekly,
-                                CronTrigger(day_of_week="mon", hour=3, minute=30),
+                                CronTrigger(day_of_week="mon", hour=3, minute=30, timezone=settings.app_tz),
                                 args=[self.app], id="auto_verify_weekly", replace_existing=True)
         except Exception:
             pass  # 注册失败不拖垮其余调度(逐条兜底,同既有模式)
@@ -123,7 +129,10 @@ class SchedulerService:
     def next_run_at(self, schedule_id: int):
         try:
             job = self._sched.get_job(self._job_id(schedule_id))
-            return job.next_run_time if job else None
+            if job is None or job.next_run_time is None:
+                return None
+            # trigger 时刻是 app_tz 的 aware 值 → 统一转 UTC naive 入库
+            return job.next_run_time.astimezone(timezone.utc).replace(tzinfo=None)
         except Exception:
             return None
 
@@ -182,7 +191,7 @@ async def watchdog_check(app) -> None:
     """每小时看门狗:对每个启用的计划,若距上次成功备份超过 2×cron 周期
     (周期 = 相邻两次触发时间差;无成功记录看连接创建是否超过 48h),发失联告警。
     同一计划 24h 内不重复告警(app_settings 去重)。cron 非法跳过并记日志。"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timezone, timedelta
 
     from apscheduler.triggers.cron import CronTrigger
 
@@ -208,7 +217,7 @@ async def watchdog_check(app) -> None:
                     except ValueError:
                         pass
                 try:
-                    trigger = CronTrigger.from_crontab(s.cron_expr)
+                    trigger = _cron_trigger_from(s.cron_expr)
                     nxt1 = trigger.get_next_fire_time(None, now)
                     nxt2 = trigger.get_next_fire_time(nxt1, nxt1) if nxt1 else None
                 except Exception:

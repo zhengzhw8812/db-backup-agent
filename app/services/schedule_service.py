@@ -3,6 +3,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from apscheduler.triggers.cron import CronTrigger
 
+from app.config import settings
+
 from app.db.models import Schedule, DbConnection
 
 
@@ -11,7 +13,7 @@ def _validate_cron(expr: str | None) -> None:
     if not expr:
         raise HTTPException(status_code=400, detail="cron 表达式不能为空")
     try:
-        CronTrigger.from_crontab(expr)
+        CronTrigger.from_crontab(expr, timezone=settings.app_tz)
     except Exception:
         raise HTTPException(status_code=400, detail=f"无效的 cron 表达式: {expr}")
 

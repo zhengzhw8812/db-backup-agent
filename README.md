@@ -73,6 +73,7 @@ docker-compose up -d
 | `APP_REDIS_URL` | 任务队列 Redis(容器内自带) | `redis://127.0.0.1:6379/0` |
 | `APP_SECRET_KEY` / `APP_FERNET_KEY` | 会话与凭据加密密钥,**必须成对提供**;不提供则首次启动自动生成到 `data/keys/` | 自动生成 |
 | `APP_INITIAL_ADMIN_USER` / `APP_INITIAL_ADMIN_PASSWORD` | 首启管理员账号(仅账号表为空时生效) | `admin` / 无 |
+| `APP_TZ` | cron 计划时区(“每天 02:00”按此时区触发) | `Asia/Shanghai` |
 | `APP_SCHEDULER_ENABLED` | 是否在本进程启动定时调度(多进程部署时只允许一个进程开启) | `true` |
 | `APP_COOKIE_SECURE` | 会话 Cookie 是否加 Secure 标记(TLS 终结代理后置 true) | `false` |
 

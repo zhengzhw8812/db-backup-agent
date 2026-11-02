@@ -11,6 +11,7 @@ services:
     volumes:
       - ./data:/data
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       APP_INITIAL_ADMIN_USER: ${APP_INITIAL_ADMIN_USER:-admin}
       APP_INITIAL_ADMIN_PASSWORD: ${APP_INITIAL_ADMIN_PASSWORD:-changeme}
     healthcheck:

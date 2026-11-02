@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # 是否在本进程内启动 APScheduler。多 worker 部署时只应有一个进程为 true,
     # 其余设为 false,避免同一 cron 被多次触发(配合连接级互斥锁进一步兜底)。
     scheduler_enabled: bool = True
+    # cron 时区(计划"每天 02:00"按此时区解释);显示时间为浏览器本地时区
+    app_tz: str = "Asia/Shanghai"
     # 会话 cookie 是否加 Secure 标记。生产应在 TLS 终结代理后置为 true。
     cookie_secure: bool = False
     # 是否暴露 /docs 与 openapi.json(默认关,自托管默认无需对外暴露 API 文档)

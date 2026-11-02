@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from app.core.clock import utcnow
 
@@ -40,14 +41,14 @@ def test_scheduler_upsert_enabled_adds_job():
     class FakeJob:
         def __init__(self, nrt): self.next_run_time = nrt
     svc._sched = SimpleNamespace(
-        add_job=lambda fn, trigger=None, **kw: added.__setitem__(kw.get("id"), FakeJob("2099-01-01")),
+        add_job=lambda fn, trigger=None, **kw: added.__setitem__(kw.get("id"), FakeJob(datetime(2099, 1, 1, tzinfo=timezone.utc))),
         remove_job=lambda jid: removed.append(jid),
         get_job=lambda jid: added.get(jid),
     )
     s = SimpleNamespace(id=1, connection_id=2, cron_expr="0 2 * * *", enabled=True)
     svc.upsert(s)
     assert "schedule_1" in added
-    assert svc.next_run_at(1) == "2099-01-01"
+    assert svc.next_run_at(1) == datetime(2099, 1, 1)  # UTC naive
     s.enabled = False
     svc.upsert(s)
     assert "schedule_1" in removed
@@ -199,3 +200,39 @@ def test_auto_verify_writes_summary_log(client, monkeypatch):
     row = db.query(SystemLog).filter(SystemLog.source == "verify").first()
     db.close()
     assert row is not None and "1" in row.message
+
+
+def test_cron_trigger_uses_app_tz(monkeypatch):
+    """cron 按设置的时区解释:同一表达式在 Asia/Shanghai 与 UTC 下 next fire 差 8h;
+    next_run_at 返回 UTC naive(与全库时间基准一致)。"""
+    from datetime import datetime, timezone
+
+    from apscheduler.triggers.cron import CronTrigger
+    from app.services import scheduler as sched_mod
+    from app.services.scheduler import SchedulerService
+
+    fixed = datetime(2026, 11, 2, 10, 0, tzinfo=timezone.utc)  # 周一 10:00 UTC
+    expr = "0 2 * * *"  # 每天 02:00
+
+    def next_fire(tz_name):
+        monkeypatch.setattr(sched_mod.settings, "app_tz", tz_name)
+        trig = sched_mod._cron_trigger_from(expr)
+        nxt = trig.get_next_fire_time(None, fixed)
+        return nxt
+
+    sh = next_fire("Asia/Shanghai")
+    utc = next_fire("UTC")
+    # 上海 02:00 = 前一日 18:00 UTC;UTC 02:00 当日 —— 相差 8 小时
+    assert (utc - sh).total_seconds() == 8 * 3600, (sh, utc)
+    assert sh.tzinfo is not None
+
+    # next_run_at 统一转 UTC naive
+    class FakeJob:
+        next_run_time = sh  # aware(+08)
+    class FakeSched2:
+        def get_job(self, _): return FakeJob()
+    svc = SchedulerService.__new__(SchedulerService)
+    svc._sched = FakeSched2()
+    out = svc.next_run_at(1)
+    assert out is not None and out.tzinfo is None
+    assert out == sh.astimezone(timezone.utc).replace(tzinfo=None)
