@@ -74,6 +74,18 @@ def enqueue_backup(db: Session, conn: DbConnection, trigger: str, now_fn=utcnow)
     return records
 
 
+def log_terminal_state(db: Session, *, level: str, source: str, message: str,
+                       context: str | None = None) -> None:
+    """任务终态写系统日志(尽力而为:日志失败绝不影响任务结果)。"""
+    from app.db.models import SystemLog
+
+    try:
+        db.add(SystemLog(level=level, source=source, message=message, context=context))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def run_backup(
     db: Session,
     crypto: Crypto,
@@ -118,6 +130,8 @@ def run_backup(
             db.commit()
             db.refresh(record)
             reporter.report("cancelled")
+            log_terminal_state(db, level="warning", source="backup",
+                               message=f"{conn.name}({record.db_name or '全部'}) 备份已取消")
             return True
         return False
 
@@ -159,6 +173,8 @@ def run_backup(
         db.commit()
         db.refresh(record)
         reporter.report("cancelled")
+        log_terminal_state(db, level="warning", source="backup",
+                           message=f"{conn.name}({record.db_name or '全部'}) 备份已取消")
         return record
     except Exception as exc:
         safe_remove(raw_path)
@@ -170,6 +186,9 @@ def run_backup(
         db.commit()
         db.refresh(record)
         reporter.report("failed", str(exc))
+        log_terminal_state(db, level="error", source="backup",
+                           message=f"{conn.name}({record.db_name or '全部'}) 备份失败",
+                           context=str(exc))
         return record
 
 def _run_backup_set(db: Session, crypto: Crypto, conn: DbConnection, record: BackupRecord,
@@ -213,4 +232,7 @@ def _run_backup_set(db: Session, crypto: Crypto, conn: DbConnection, record: Bac
         record.duration_ms = int((time.monotonic() - start) * 1000)
         db.commit(); db.refresh(record)
         reporter.report("failed", str(exc))
+        log_terminal_state(db, level="error", source="backup",
+                           message=f"{conn.name}(备份集:{','.join(names)}) 备份失败",
+                           context=str(exc))
         return record

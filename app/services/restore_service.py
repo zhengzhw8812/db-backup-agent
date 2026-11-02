@@ -10,7 +10,7 @@ from app.core.crypto import Crypto
 from app.core.archive import decompress_file, sha256_of_file
 from app.core.fsutil import safe_remove
 from app.adapters.base import get_adapter, BackupCancelled
-from app.services.backup_service import _conn_info
+from app.services.backup_service import _conn_info, log_terminal_state
 from app.services.backup_set import restore_set
 from app.workers.progress import ProgressReporter
 from app.core.clock import utcnow
@@ -110,6 +110,8 @@ def run_restore(
         db.commit()
         db.refresh(restore_record)
         reporter.report("cancelled")
+        log_terminal_state(db, level="warning", source="restore",
+                           message=f"恢复到 {target_conn.name} 已取消")
         return restore_record
     except Exception as exc:
         restore_record.status = "failed"
@@ -119,6 +121,8 @@ def run_restore(
         db.commit()
         db.refresh(restore_record)
         reporter.report("failed", str(exc))
+        log_terminal_state(db, level="error", source="restore",
+                           message=f"恢复到 {target_conn.name} 失败", context=str(exc))
         return restore_record
     finally:
         safe_remove(raw_path)

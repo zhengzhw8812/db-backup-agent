@@ -209,3 +209,36 @@ def test_run_backup_uses_record_db_name(tmp_path, monkeypatch):
     assert out.status == "success"
     assert seen["db_name"] == "chosen_db"   # 用的是 record.db_name,而非 conn.db_name('d')
     db.close()
+
+
+def test_failed_backup_writes_system_log(tmp_path, monkeypatch):
+    """失败终态写入系统日志(日志页可查),cancelled 写 warning。"""
+    from app.db.models import SystemLog
+
+    db, conn, crypto, bdir, rid = _setup(tmp_path, monkeypatch)
+    bdir.mkdir()
+
+    class BoomAdapter(FakeAdapter):
+        def dump(self, info, dest, *, is_cancelled=None): raise RuntimeError("pg_dump not found")
+    monkeypatch.setattr("app.services.backup_service.get_adapter", lambda t: BoomAdapter())
+    rec = run_backup(db, crypto, conn, reporter := ProgressReporter(rid, FakeRedis()), bdir, rid)
+    row = db.query(SystemLog).filter(SystemLog.source == "backup",
+                                     SystemLog.level == "error").first()
+    assert row is not None
+    assert conn.name in row.message and "失败" in row.message
+    assert "pg_dump not found" in (row.context or "")
+    db.close()
+
+
+def test_cancelled_backup_writes_warning_log(tmp_path, monkeypatch):
+    from app.db.models import SystemLog
+
+    db, conn, crypto, bdir, rid = _setup(tmp_path, monkeypatch)
+    bdir.mkdir()
+    reporter = ProgressReporter(rid, FakeRedis(cancelled=True))
+    rec = run_backup(db, crypto, conn, reporter, bdir, rid)
+    assert rec.status == "cancelled"
+    row = db.query(SystemLog).filter(SystemLog.source == "backup",
+                                     SystemLog.level == "warning").first()
+    assert row is not None and "取消" in row.message
+    db.close()

@@ -191,3 +191,24 @@ def test_run_restore_dispatches_set(tmp_path, monkeypatch):
     final = db2.get(RestoreRecord, rid).status
     db2.close()
     assert dispatched.get("called") is True or final in ("success", "failed", "partial")
+
+
+def test_failed_restore_writes_system_log(tmp_path, monkeypatch):
+    """恢复失败写入系统日志(日志页可查)。"""
+    from app.db.models import SystemLog
+
+    db, conn, crypto, bdir, backup, rid = _setup(tmp_path, monkeypatch)
+
+    class BoomRestoreAdapter:
+        def restore(self, info, src, *, is_cancelled=None): raise RuntimeError("psql boom")
+    import app.services.restore_service as rs
+    monkeypatch.setattr(rs, "get_adapter", lambda t: BoomRestoreAdapter())
+    rr = rs.RestoreRecord(backup_record_id=backup.id, target_connection_id=conn.id,
+                          status="running", started_at=utcnow())
+    db.add(rr); db.commit(); db.refresh(rr)
+    out = run_restore(db, crypto, backup, conn, ProgressReporter(rr.id, FakeRedis()), bdir, rr.id)
+    assert out.status == "failed"
+    row = db.query(SystemLog).filter(SystemLog.source == "restore",
+                                     SystemLog.level == "error").first()
+    assert row is not None and "psql boom" in (row.context or "")
+    db.close()
