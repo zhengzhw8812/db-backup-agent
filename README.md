@@ -88,6 +88,11 @@ docker-compose up -d
 
 ## 📋 更新日志
 
+### v3.4.1
+
+#### 🐛 问题修复
+- **修复 MySQL 多库备份必然失败** - v3.3.1 集文件唯一命名重构漏改 `dump_set_mysql` 签名,多库 MySQL 备份报 `takes 3 positional arguments but 4 were given`(v3.3.0 起即存在);同时 mysql 集文件名恢复按唯一命名生成(原硬编码 `set.sql.gz`)
+
 ### v3.4.0
 
 #### ✨ 用户体验批量改进

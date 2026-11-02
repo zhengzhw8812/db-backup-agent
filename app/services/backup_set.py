@@ -78,7 +78,8 @@ def dump_set_pg(info: ConnectionInfo, db_names: list[str], set_dir: Path,
     return out
 
 
-def dump_set_mysql(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> Path:
+def dump_set_mysql(info: ConnectionInfo, db_names: list[str], set_dir: Path,
+                   final_name: str = "set.sql.gz") -> Path:
     """mysqldump --databases(原生多库,自带 CREATE DATABASE)→ gzip。"""
     adapter = get_adapter("mysql")
     defaults = adapter._write_defaults(info)
@@ -90,7 +91,7 @@ def dump_set_mysql(info: ConnectionInfo, db_names: list[str], set_dir: Path) -> 
             os.unlink(defaults)
         except OSError:
             pass
-    out = set_dir.parent / "set.sql.gz"
+    out = set_dir.parent / final_name
     with gzip.open(out, "wb", compresslevel=6) as fout:
         fout.write(dump_sql.encode("utf-8"))
     return out

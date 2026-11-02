@@ -79,7 +79,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="DB Backup Agent",
-        version="3.4.0",
+        version="3.4.1",
         lifespan=lifespan,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,

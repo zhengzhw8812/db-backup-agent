@@ -199,3 +199,37 @@ def test_restore_set_partial_status(tmp_path, monkeypatch):
     db2.close()
     assert rec.status == "partial"
     assert "logs" in err and "boom" in err
+
+
+def test_dump_set_dispatch_mysql_uses_final_name(tmp_path, monkeypatch):
+    """回归(v3.4.0):分发器给 dump_set_mysql 传 final_name 会 TypeError(签名漏改);
+    且 mysql 集文件名必须用 final_name(唯一命名),不能硬编码 set.sql.gz。"""
+    import gzip
+
+    import app.services.backup_set as bs
+    from app.adapters.base import ConnectionInfo
+
+    captured = {}
+
+    class FakeMysqlAdapter:
+        def _write_defaults(self, info):
+            p = tmp_path / "defaults.cnf"
+            p.write_text("[client]\nuser=u\n")
+            return str(p)
+
+    def fake_capture(argv, timeout=None):
+        captured["argv"] = argv
+        return "-- dump"
+
+    monkeypatch.setattr(bs, "get_adapter", lambda t: FakeMysqlAdapter())
+    monkeypatch.setattr(bs, "run_subprocess_capture", fake_capture)
+
+    set_dir = tmp_path / "set"
+    set_dir.mkdir()
+    info = ConnectionInfo(type="mysql", host="h", username="u", password="p")
+    out = bs.dump_set(info, ["app", "logs"], set_dir, "dbba-app-20261102.sql.gz")
+    assert out.name == "dbba-app-20261102.sql.gz"  # 唯一命名生效
+    assert out.exists()
+    with gzip.open(out) as f:
+        assert f.read().decode() == "-- dump"
+    assert "--databases" in " ".join(captured["argv"])
